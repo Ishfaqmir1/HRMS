@@ -72,6 +72,7 @@ export interface LeaveRequest {
   rejectionReason: string | null;
   leaveType: LeaveType;
   employee?: { id: string; firstName: string; lastName: string; employeeCode: string };
+  createdAt: string;
 }
 
 export interface Holiday {

@@ -167,10 +167,189 @@ async function main() {
     create: { userId: superAdminUser.id, roleId: superAdminRole.id },
   });
 
+  console.log('Seeding billing plans (per-employee pricing)...');
+  const billingPlans = [
+    {
+      name: 'Starter',
+      slug: 'starter',
+      description: 'Best for small businesses. Core HR with attendance, leave, and ESS.',
+      minMonthlyFee: 2999,
+      pricePerEmployee: 0,
+      includedEmployees: 25,
+      maxEmployees: 25,
+      maxStorageGB: 5,
+      annualDiscountPercent: 15,
+      features: [
+        'Employee Management',
+        'Attendance Tracking',
+        'Leave Management',
+        'Holiday Calendar',
+        'Departments & Branches',
+        'Employee Self-Service (ESS)',
+        'Mobile Attendance',
+        'Basic Reports',
+        'Email Support',
+      ],
+      sortOrder: 1,
+    },
+    {
+      name: 'Growth',
+      slug: 'growth',
+      description: 'For growing companies. Everything in Starter plus Payroll, Assets, and more.',
+      minMonthlyFee: 0, // No flat fee — pay per employee
+      pricePerEmployee: 120,
+      includedEmployees: 0,
+      maxEmployees: 100,
+      maxStorageGB: 25,
+      annualDiscountPercent: 15,
+      features: [
+        'Everything in Starter',
+        'Payroll Processing',
+        'Payslips & Salary Structures',
+        'Employee Loans',
+        'Expense Management',
+        'Document Management',
+        'Asset Management',
+        'Shift Management',
+        'Overtime Tracking',
+        'Geo-fencing',
+        'Workflow Approvals',
+        'API Access',
+        'Priority Support',
+      ],
+      sortOrder: 2,
+    },
+    {
+      name: 'Business',
+      slug: 'business',
+      description: 'For larger teams. Full feature set with custom branding and advanced analytics.',
+      minMonthlyFee: 0,
+      pricePerEmployee: 99,
+      includedEmployees: 0,
+      maxEmployees: 500,
+      maxStorageGB: 100,
+      annualDiscountPercent: 18,
+      features: [
+        'Everything in Growth',
+        'Face Attendance (optional)',
+        'Custom Branding / White-label',
+        'Advanced Analytics & Reports',
+        'Multi-company Support',
+        'SSO (Microsoft/Google/SAML)',
+        'Custom Workflows',
+        'Advanced Payroll Rules',
+        'Audit Reports',
+        'Dedicated Support',
+      ],
+      sortOrder: 3,
+    },
+    {
+      name: 'Enterprise',
+      slug: 'enterprise',
+      description: 'For large organizations needing custom solutions with dedicated support.',
+      minMonthlyFee: 0,
+      pricePerEmployee: 79,
+      includedEmployees: 0,
+      maxEmployees: 999999,
+      maxStorageGB: 500,
+      annualDiscountPercent: 20,
+      features: [
+        'Everything in Business',
+        'Unlimited Employees',
+        'On-premise Deployment Option',
+        'Custom Integrations',
+        'Dedicated Account Manager',
+        'SLA Guarantee',
+        'Advanced Security Features',
+        'Custom Development Hours',
+        '24/7 Phone & Email Support',
+      ],
+      sortOrder: 4,
+    },
+  ];
+
+  for (const plan of billingPlans) {
+    await prisma.billingPlan.upsert({
+      where: { slug: plan.slug },
+      update: plan,
+      create: plan,
+    });
+  }
+
+  console.log('Seeding feature flags...');
+  const featureFlags = [
+    { code: 'custom_branding', name: 'Custom Branding', description: 'Customize the platform with your company logo and colors', isGlobal: false },
+    { code: 'advanced_payroll', name: 'Advanced Payroll', description: 'Full payroll processing with tax calculations', isGlobal: false },
+    { code: 'recruitment_ats', name: 'Recruitment ATS', description: 'Applicant tracking system for hiring', isGlobal: false },
+    { code: 'api_access', name: 'API Access', description: 'REST API access for custom integrations', isGlobal: false },
+    { code: 'audit_logs', name: 'Audit Logs', description: 'Detailed audit trail of all system actions', isGlobal: true },
+    { code: 'reports_export', name: 'Reports Export', description: 'Export reports to CSV, PDF, and Excel', isGlobal: false },
+    { code: 'bulk_operations', name: 'Bulk Operations', description: 'Perform bulk create/update operations', isGlobal: false },
+  ];
+
+  for (const flag of featureFlags) {
+    await prisma.featureFlag.upsert({
+      where: { code: flag.code },
+      update: flag,
+      create: flag,
+    });
+  }
+
+  // Assign the demo company to Starter plan and set trial
+  await prisma.company.update({
+    where: { slug: 'demo-company' },
+    data: {
+      subscriptionPlan: 'TRIAL',
+      trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  console.log('Seeding demo HR user + employee for tenant testing...');
+  const demoHrEmail = 'hr@demo.com';
+  const demoHrPassword = 'Demo123!';
+  const demoHrHash = await bcrypt.hash(demoHrPassword, 10);
+
+  const hrRole = await prisma.role.findFirstOrThrow({
+    where: { companyId: null, slug: 'hr-manager' },
+  });
+
+  let demoHrUser = await prisma.user.findFirst({
+    where: { companyId: demoCompany.id, email: demoHrEmail },
+  });
+
+  if (!demoHrUser) {
+    demoHrUser = await prisma.user.create({
+      data: {
+        companyId: demoCompany.id,
+        email: demoHrEmail,
+        passwordHash: demoHrHash,
+        status: 'ACTIVE',
+        isEmailVerified: true,
+      },
+    });
+
+    await prisma.userRole.create({
+      data: { userId: demoHrUser.id, roleId: hrRole.id },
+    });
+
+    await prisma.employee.create({
+      data: {
+        companyId: demoCompany.id,
+        userId: demoHrUser.id,
+        employeeCode: 'EMP-0001',
+        firstName: 'Demo',
+        lastName: 'HR',
+        workEmail: demoHrEmail,
+        dateOfJoining: new Date(),
+      },
+    });
+  }
+
   console.log('---------------------------------------------');
   console.log('Seed complete.');
-  console.log(`Super Admin login: ${superAdminEmail} / ${superAdminPassword}`);
-  console.log(`Demo company slug: ${demoCompany.slug}`);
+  console.log(`Super Admin:    ${superAdminEmail} / ${superAdminPassword}`);
+  console.log(`Demo HR:        ${demoHrEmail} / ${demoHrPassword}`);
+  console.log(`Demo company:   ${demoCompany.slug}`);
   console.log('---------------------------------------------');
 }
 

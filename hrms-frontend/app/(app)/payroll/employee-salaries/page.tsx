@@ -141,13 +141,13 @@ export default function EmployeeSalariesPage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Assign Salary</DialogTitle>
-            <DialogDescription>Set up an employee's salary. Select a structure to pre-fill values.</DialogDescription>
+            <DialogDescription>Set up an employee&apos;s salary. Select a structure to pre-fill values.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit(v => saveMut.mutate(v))} className="space-y-4">
             <div>
               <Label>Employee</Label>
               <select {...register('employeeId')} className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
-                <option value="">Select employee…</option>
+                <option value="">Select employee...</option>
                 {employees?.items.filter(e => e.status === 'ACTIVE').map(e => (
                   <option key={e.id} value={e.id}>{e.firstName} {e.lastName} ({e.employeeCode})</option>
                 ))}
@@ -157,7 +157,7 @@ export default function EmployeeSalariesPage() {
             <div>
               <Label>Use template (optional)</Label>
               <select value={structureId || ''} onChange={e => { setValue('structureId', e.target.value); if (e.target.value) applyStructure(e.target.value); }} className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
-                <option value="">Manual entry…</option>
+                <option value="">Manual entry...</option>
                 {structures?.items.map(s => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}

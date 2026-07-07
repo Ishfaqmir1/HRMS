@@ -19,6 +19,7 @@ import { HolidaysModule } from './holidays/holidays.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { LeaveModule } from './leave/leave.module';
 import { EssModule } from './ess/ess.module';
+import { GeoFenceModule } from './geo-fence/geo-fence.module';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -54,6 +55,9 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     AttendanceModule,
     LeaveModule,
     EssModule,
+
+    // Geo-fencing
+    GeoFenceModule,
   ],
   providers: [
     // Order matters: auth first, then throttling, exception handling, response shaping.

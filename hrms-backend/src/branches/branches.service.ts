@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
+import { SetBranchGeoDto } from './dto/set-branch-geo.dto';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 
 @Injectable()
@@ -54,5 +55,17 @@ export class BranchesService {
   async remove(companyId: string, id: string) {
     await this.findOne(companyId, id);
     return this.prisma.branch.update({ where: { id }, data: { deletedAt: new Date(), isActive: false } });
+  }
+
+  async setGeoLocation(companyId: string, id: string, dto: SetBranchGeoDto) {
+    await this.findOne(companyId, id);
+    return this.prisma.branch.update({
+      where: { id },
+      data: {
+        latitude: dto.latitude,
+        longitude: dto.longitude,
+        geoFenceRadiusMeters: dto.geoFenceRadiusMeters ?? 500,
+      },
+    });
   }
 }

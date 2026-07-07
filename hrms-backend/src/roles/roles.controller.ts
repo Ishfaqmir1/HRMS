@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RolesService } from './roles.service';
 import { CreateRoleDto, AssignPermissionsDto, AssignRoleToUserDto } from './dto/role.dto';
@@ -35,6 +35,16 @@ export class RolesController {
   @Permissions('role.create')
   create(@TenantId() companyId: string, @Body() dto: CreateRoleDto) {
     return this.rolesService.create(companyId, dto);
+  }
+
+  @Patch(':id')
+  @Permissions('role.update')
+  updateMetadata(
+    @TenantId() companyId: string,
+    @Param('id') id: string,
+    @Body() dto: CreateRoleDto,
+  ) {
+    return this.rolesService.updateMetadata(companyId, id, dto);
   }
 
   @Put(':id/permissions')

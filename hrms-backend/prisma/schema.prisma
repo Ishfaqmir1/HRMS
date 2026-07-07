@@ -10,6 +10,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // ----------------------------------------------------------------------------
@@ -162,6 +163,12 @@ model Branch {
   timezone   String?
   isHeadOffice Boolean @default(false)
   isActive   Boolean  @default(true)
+
+  // Geo-fencing fields
+  latitude           Float?
+  longitude          Float?
+  geoFenceRadiusMeters Int?   @default(500) // default 500m radius
+
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   deletedAt  DateTime?

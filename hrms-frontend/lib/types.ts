@@ -160,6 +160,154 @@ export interface Role {
 }
 
 // ============================================================
+// Payroll — Salary Structure
+// ============================================================
+
+export interface SalaryStructure {
+  id: string;
+  name: string;
+  description?: string | null;
+  basic: number;
+  housingAllowance: number;
+  transportAllowance: number;
+  medicalAllowance: number;
+  otherAllowances: number;
+  taxPercent: number;
+  pensionPercent: number;
+  insuranceDeduction: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface EmployeeSalary {
+  id: string;
+  employeeId: string;
+  employee?: { id: string; firstName: string; lastName: string; employeeCode: string; designation?: { title: string } | null } | null;
+  structureId?: string | null;
+  structure?: SalaryStructure | null;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  basic: number;
+  housingAllowance: number;
+  transportAllowance: number;
+  medicalAllowance: number;
+  otherAllowances: number;
+  taxPercent: number;
+  pensionPercent: number;
+  insuranceDeduction: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface PayrollRun {
+  id: string;
+  month: number;
+  year: number;
+  status: 'DRAFT' | 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
+  processedById?: string | null;
+  processedAt?: string | null;
+  totalGross: number;
+  totalDeductions: number;
+  totalNet: number;
+  employeeCount: number;
+  notes?: string | null;
+  createdAt: string;
+  payslips?: Payslip[];
+}
+
+export interface Payslip {
+  id: string;
+  employeeId: string;
+  runId: string;
+  employee?: { id: string; firstName: string; lastName: string; employeeCode: string; designation?: { title: string } | null } | null;
+  run?: { month: number; year: number } | null;
+  basic: number;
+  housingAllowance: number;
+  transportAllowance: number;
+  medicalAllowance: number;
+  otherAllowances: number;
+  overtimePay: number;
+  bonus: number;
+  grossPay: number;
+  taxDeduction: number;
+  pensionDeduction: number;
+  insuranceDeduction: number;
+  loanDeduction: number;
+  otherDeductions: number;
+  totalDeductions: number;
+  netPay: number;
+  status: 'DRAFT' | 'APPROVED' | 'PAID';
+  paidAt?: string | null;
+  notes?: string | null;
+  createdAt: string;
+}
+
+export interface Loan {
+  id: string;
+  employeeId: string;
+  employee?: { id: string; firstName: string; lastName: string; employeeCode: string } | null;
+  loanType: 'PERSONAL' | 'ADVANCE' | 'EMERGENCY';
+  amount: number;
+  totalAmount: number;
+  interestRate: number;
+  repaymentMonths: number;
+  monthlyInstallment: number;
+  purpose?: string | null;
+  status: 'PENDING' | 'APPROVED' | 'ACTIVE' | 'COMPLETED' | 'REJECTED' | 'CANCELLED';
+  approvedById?: string | null;
+  approvedAt?: string | null;
+  disbursedAt?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  repayments?: LoanRepayment[];
+}
+
+export interface LoanRepayment {
+  id: string;
+  loanId: string;
+  amount: number;
+  dueDate: string;
+  paidAt?: string | null;
+  status: string;
+}
+
+export interface ReimbursementCategory {
+  id: string;
+  name: string;
+  description?: string | null;
+  maxAmount?: number | null;
+  isActive: boolean;
+}
+
+export interface Reimbursement {
+  id: string;
+  employeeId: string;
+  employee?: { id: string; firstName: string; lastName: string; employeeCode: string } | null;
+  categoryId: string;
+  category?: ReimbursementCategory | null;
+  amount: number;
+  description?: string | null;
+  receiptUrl?: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAID';
+  approvedById?: string | null;
+  approvedAt?: string | null;
+  paidAt?: string | null;
+  notes?: string | null;
+  createdAt: string;
+}
+
+export interface PayrollDashboard {
+  activeStructures: number;
+  activeSalaries: number;
+  latestRun: PayrollRun | null;
+  pendingLoans: number;
+  activeLoans: number;
+  pendingReimbursements: number;
+  yearlyRuns: { month: number; totalGross: number; totalNet: number; totalDeductions: number; employeeCount: number }[];
+  currentYear: number;
+}
+
+// ============================================================
 // Admin — Branch
 // ============================================================
 

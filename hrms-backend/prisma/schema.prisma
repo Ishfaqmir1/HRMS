@@ -141,6 +141,13 @@ model Company {
   leaveTypes    LeaveType[]
   leaveBalances LeaveBalance[]
   leaveRequests LeaveRequest[]
+  salaryStructures  SalaryStructure[]
+  employeeSalaries  EmployeeSalary[]
+  payrollRuns       PayrollRun[]
+  payslips          Payslip[]
+  loans             Loan[]
+  reimbursementCategories ReimbursementCategory[]
+  reimbursements    Reimbursement[]
 
   @@map("companies")
 }
@@ -387,6 +394,10 @@ model Employee {
   leaveBalances     LeaveBalance[]
   leaveRequests     LeaveRequest[]     @relation("EmployeeLeaveRequests")
   approvedLeaveRequests LeaveRequest[] @relation("ApproverLeaveRequests")
+  employeeSalaries      EmployeeSalary[]
+  payslips              Payslip[]
+  loans                 Loan[]
+  reimbursements        Reimbursement[]
 
   @@unique([companyId, employeeCode])
   @@index([companyId])
@@ -570,4 +581,231 @@ model LeaveRequest {
   @@index([employeeId])
   @@index([status])
   @@map("leave_requests")
+}
+
+// ----------------------------------------------------------------------------
+// Phase 3: Payroll Engine
+// ----------------------------------------------------------------------------
+
+// --- Enums ---
+
+enum PayrollRunStatus {
+  DRAFT
+  PROCESSING
+  COMPLETED
+  CANCELLED
+}
+
+enum PayslipStatus {
+  DRAFT
+  APPROVED
+  PAID
+}
+
+enum LoanStatus {
+  PENDING
+  APPROVED
+  ACTIVE
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum LoanType {
+  PERSONAL
+  ADVANCE
+  EMERGENCY
+}
+
+enum ReimbursementStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+// --- Salary Structure (template) ---
+
+model SalaryStructure {
+  id          String   @id @default(uuid())
+  companyId   String
+  name        String
+  description String?
+  basic               Float @default(0)
+  housingAllowance    Float @default(0)
+  transportAllowance  Float @default(0)
+  medicalAllowance    Float @default(0)
+  otherAllowances     Float @default(0)
+  taxPercent         Float @default(0)
+  pensionPercent     Float @default(0)
+  insuranceDeduction Float @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeSalaries EmployeeSalary[]
+  @@index([companyId])
+  @@map("salary_structures")
+}
+
+model EmployeeSalary {
+  id             String   @id @default(uuid())
+  companyId      String
+  employeeId     String
+  structureId    String?
+  effectiveFrom  DateTime
+  effectiveTo    DateTime?
+  basic               Float @default(0)
+  housingAllowance    Float @default(0)
+  transportAllowance  Float @default(0)
+  medicalAllowance    Float @default(0)
+  otherAllowances     Float @default(0)
+  taxPercent         Float @default(0)
+  pensionPercent     Float @default(0)
+  insuranceDeduction Float @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  company   Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee  Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  structure SalaryStructure? @relation(fields: [structureId], references: [id], onDelete: SetNull)
+  @@index([companyId])
+  @@index([employeeId])
+  @@map("employee_salaries")
+}
+
+model PayrollRun {
+  id         String   @id @default(uuid())
+  companyId  String
+  month      Int
+  year       Int
+  status     PayrollRunStatus @default(DRAFT)
+  processedById String?
+  processedAt   DateTime?
+  totalGross       Float @default(0)
+  totalDeductions  Float @default(0)
+  totalNet         Float @default(0)
+  employeeCount    Int   @default(0)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  payslips Payslip[]
+  @@unique([companyId, month, year])
+  @@index([companyId])
+  @@map("payroll_runs")
+}
+
+model Payslip {
+  id         String   @id @default(uuid())
+  companyId  String
+  employeeId String
+  runId      String
+  basic               Float @default(0)
+  housingAllowance    Float @default(0)
+  transportAllowance  Float @default(0)
+  medicalAllowance    Float @default(0)
+  otherAllowances     Float @default(0)
+  overtimePay        Float @default(0)
+  bonus               Float @default(0)
+  grossPay Float @default(0)
+  taxDeduction      Float @default(0)
+  pensionDeduction  Float @default(0)
+  insuranceDeduction Float @default(0)
+  loanDeduction     Float @default(0)
+  otherDeductions   Float @default(0)
+  totalDeductions Float @default(0)
+  netPay          Float @default(0)
+  status    PayslipStatus @default(DRAFT)
+  paidAt    DateTime?
+  paidById  String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  run      PayrollRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  @@unique([employeeId, runId])
+  @@index([companyId])
+  @@index([runId])
+  @@map("payslips")
+}
+
+model Loan {
+  id               String     @id @default(uuid())
+  companyId        String
+  employeeId       String
+  loanType         LoanType   @default(PERSONAL)
+  amount           Float
+  totalAmount      Float
+  interestRate     Float      @default(0)
+  repaymentMonths  Int
+  monthlyInstallment Float
+  purpose          String?
+  status           LoanStatus @default(PENDING)
+  approvedById String?
+  approvedAt   DateTime?
+  disbursedAt  DateTime?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  repayments LoanRepayment[]
+  @@index([companyId])
+  @@index([employeeId])
+  @@map("loans")
+}
+
+model LoanRepayment {
+  id        String   @id @default(uuid())
+  loanId    String
+  amount    Float
+  dueDate   DateTime
+  paidAt    DateTime?
+  status    String   @default("PENDING")
+  notes     String?
+  createdAt DateTime @default(now())
+  loan Loan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  @@index([loanId])
+  @@map("loan_repayments")
+}
+
+model ReimbursementCategory {
+  id        String   @id @default(uuid())
+  companyId String
+  name      String
+  description String?
+  maxAmount Float?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  reimbursements Reimbursement[]
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@map("reimbursement_categories")
+}
+
+model Reimbursement {
+  id         String              @id @default(uuid())
+  companyId  String
+  employeeId String
+  categoryId String
+  amount     Float
+  description String?
+  receiptUrl  String?
+  status     ReimbursementStatus @default(PENDING)
+  approvedById String?
+  approvedAt   DateTime?
+  paidAt       DateTime?
+  notes        String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  company  Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee Employee             @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  category ReimbursementCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  @@index([companyId])
+  @@index([employeeId])
+  @@map("reimbursements")
 }

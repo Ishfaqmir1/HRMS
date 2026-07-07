@@ -61,6 +61,22 @@ export class RolesService {
     });
   }
 
+  async updateMetadata(companyId: string, roleId: string, dto: CreateRoleDto) {
+    const role = await this.prisma.role.findFirst({ where: { id: roleId, companyId } });
+    if (!role) throw new NotFoundException('Custom role not found.');
+    if (role.isSystem) throw new ConflictException('System roles cannot be modified.');
+
+    const existing = await this.prisma.role.findFirst({
+      where: { companyId, slug: dto.slug, id: { not: roleId } },
+    });
+    if (existing) throw new ConflictException('Another role with this slug already exists.');
+
+    return this.prisma.role.update({
+      where: { id: roleId },
+      data: { name: dto.name, slug: dto.slug, description: dto.description },
+    });
+  }
+
   async setPermissions(companyId: string, roleId: string, dto: AssignPermissionsDto) {
     const role = await this.prisma.role.findFirst({ where: { id: roleId, companyId } });
     if (!role) throw new NotFoundException('Custom role not found (system roles cannot be edited).');

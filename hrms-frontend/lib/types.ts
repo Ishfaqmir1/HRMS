@@ -39,6 +39,10 @@ export interface AttendanceRecord {
   workedMinutes: number | null;
   status: string;
   source: string;
+  checkInLat?: number | null;
+  checkInLng?: number | null;
+  checkOutLat?: number | null;
+  checkOutLng?: number | null;
 }
 
 export interface LeaveType {
@@ -89,4 +93,87 @@ export interface DashboardData {
   leaveBalances: LeaveBalance[];
   pendingLeaveRequests: number;
   upcomingHolidays: Holiday[];
+}
+
+// ============================================================
+// Admin — Shifts
+// ============================================================
+
+export interface Shift {
+  id: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  breakMinutes: number;
+  gracePeriodMinutes: number;
+  workingDays: number[];
+  isActive: boolean;
+  _count?: { employees: number };
+}
+
+// ============================================================
+// Admin — Company
+// ============================================================
+
+export interface Company {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl?: string | null;
+  industry?: string | null;
+  size?: string | null;
+  timezone: string;
+  locale: string;
+  currency: string;
+  status: 'ACTIVE' | 'SUSPENDED' | 'TRIAL_EXPIRED' | 'CANCELLED';
+  isActive: boolean;
+  createdAt: string;
+  _count?: { employees: number; users: number };
+}
+
+// ============================================================
+// Admin — Roles & Permissions
+// ============================================================
+
+export interface Permission {
+  id: string;
+  code: string;
+  module: string;
+  action: string;
+  description?: string | null;
+}
+
+export interface RolePermission {
+  id: string;
+  permission: Permission;
+}
+
+export interface Role {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  isSystem: boolean;
+  systemRole?: string | null;
+  companyId?: string | null;
+  rolePermissions: RolePermission[];
+}
+
+// ============================================================
+// Admin — Branch
+// ============================================================
+
+export interface Branch {
+  id: string;
+  name: string;
+  code?: string | null;
+  addressLine1?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  isHeadOffice: boolean;
+  isActive: boolean;
+  latitude?: number | null;
+  longitude?: number | null;
+  geoFenceRadiusMeters?: number | null;
 }

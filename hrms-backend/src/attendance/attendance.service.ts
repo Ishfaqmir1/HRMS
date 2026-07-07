@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AttendanceSource } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { GeoFenceService } from '../geo-fence/geo-fence.service';
 import {
   ClockInDto,
   ClockOutDto,
@@ -17,7 +18,10 @@ function startOfDay(date: Date): Date {
 
 @Injectable()
 export class AttendanceService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private geoFenceService: GeoFenceService,
+  ) {}
 
   async clockIn(companyId: string, employeeId: string, dto: ClockInDto) {
     const today = startOfDay(new Date());
@@ -27,6 +31,22 @@ export class AttendanceService {
 
     if (existing?.checkIn) {
       throw new BadRequestException('You have already clocked in today.');
+    }
+
+    // Geo-fence validation — if lat/lng provided, check against employee's branch
+    if (dto.lat != null && dto.lng != null) {
+      const fenceResult = await this.geoFenceService.validateAttendanceLocation(
+        companyId,
+        employeeId,
+        { latitude: dto.lat, longitude: dto.lng },
+      );
+
+      if (!fenceResult.withinFence) {
+        throw new ForbiddenException(
+          `You are ${fenceResult.distanceMeters}m away from your branch "${fenceResult.branchName}" ` +
+          `(max allowed: ${fenceResult.fenceRadiusMeters}m). Please move closer to clock in.`,
+        );
+      }
     }
 
     const data = {

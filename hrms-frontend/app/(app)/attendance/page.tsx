@@ -1,6 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { MapPin } from 'lucide-react';
 import { api, unwrap } from '@/lib/api-client';
 import { AttendanceRecord, PaginatedResult } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -21,8 +23,24 @@ function formatDuration(minutes: number | null) {
   return `${h}h ${m}m`;
 }
 
+/** Capture the user's current geolocation (prompts browser permission). */
+function getCurrentPosition(): Promise<{ lat: number; lng: number } | null> {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve(null);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve({ lat: position.coords.latitude, lng: position.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 },
+    );
+  });
+}
+
 export default function AttendancePage() {
   const queryClient = useQueryClient();
+  const [gpsStatus, setGpsStatus] = useState<'idle' | 'locating' | 'error'>('idle');
 
   const { data: today } = useQuery({
     queryKey: ['attendance', 'today'],
@@ -39,16 +57,45 @@ export default function AttendancePage() {
     queryClient.invalidateQueries({ queryKey: ['dashboard'] });
   };
 
-  const clockIn = useMutation({
-    mutationFn: () => api.post('/attendance/clock-in', { source: 'WEB' }),
-    onSuccess: invalidate,
-  });
-  const clockOut = useMutation({
-    mutationFn: () => api.post('/attendance/clock-out', {}),
-    onSuccess: invalidate,
+  const clockInMut = useMutation({
+    mutationFn: (body: { lat?: number; lng?: number; source?: string }) =>
+      api.post('/attendance/clock-in', body),
+    onSuccess: () => { invalidate(); },
   });
 
-  const error = (clockIn.error as any) || (clockOut.error as any);
+  const clockOutMut = useMutation({
+    mutationFn: (body: { lat?: number; lng?: number }) =>
+      api.post('/attendance/clock-out', body),
+    onSuccess: () => { invalidate(); },
+  });
+
+  async function handleClockIn() {
+    setGpsStatus('locating');
+    const coords = await getCurrentPosition();
+    if (coords) {
+      setGpsStatus('idle');
+      clockInMut.mutate({ ...coords, source: 'GPS' });
+    } else {
+      // GPS unavailable or denied — proceed without location
+      setGpsStatus('idle');
+      clockInMut.mutate({ source: 'WEB' });
+    }
+  }
+
+  async function handleClockOut() {
+    setGpsStatus('locating');
+    const coords = await getCurrentPosition();
+    if (coords) {
+      setGpsStatus('idle');
+      clockOutMut.mutate(coords);
+    } else {
+      setGpsStatus('idle');
+      clockOutMut.mutate({});
+    }
+  }
+
+  const error = (clockInMut.error as any) || (clockOutMut.error as any);
+  const isPending = clockInMut.isPending || clockOutMut.isPending;
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -75,18 +122,30 @@ export default function AttendancePage() {
               </div>
             </div>
 
-            <div className="flex gap-2">
-              <Button onClick={() => clockIn.mutate()} isLoading={clockIn.isPending} disabled={!!today?.checkIn}>
-                Clock in
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => clockOut.mutate()}
-                isLoading={clockOut.isPending}
-                disabled={!today?.checkIn || !!today?.checkOut}
-              >
-                Clock out
-              </Button>
+            <div className="flex flex-col items-end gap-2">
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleClockIn}
+                  isLoading={isPending}
+                  disabled={!!today?.checkIn}
+                >
+                  {gpsStatus === 'locating' ? '📍 Locating…' : 'Clock in'}
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={handleClockOut}
+                  isLoading={isPending}
+                  disabled={!today?.checkIn || !!today?.checkOut}
+                >
+                  {gpsStatus === 'locating' ? '📍 Locating…' : 'Clock out'}
+                </Button>
+              </div>
+              {today?.checkInLat != null && today?.checkInLng != null && (
+                <span className="flex items-center gap-1 text-xs text-ink-faint">
+                  <MapPin size={10} />
+                  GPS captured at clock-in
+                </span>
+              )}
             </div>
           </div>
 
@@ -113,6 +172,7 @@ export default function AttendancePage() {
                   <th className="py-2 pr-4">Out</th>
                   <th className="py-2 pr-4">Worked</th>
                   <th className="py-2 pr-4">Status</th>
+                  <th className="py-2 pr-4">Source</th>
                 </tr>
               </thead>
               <tbody>
@@ -125,11 +185,20 @@ export default function AttendancePage() {
                     <td className="py-3 pr-4">
                       <Badge tone={statusTone(r.status)}>{r.status}</Badge>
                     </td>
+                    <td className="py-3 pr-4">
+                      {r.checkInLat != null || r.checkOutLat != null ? (
+                        <span className="flex items-center gap-1 text-xs text-ink-faint">
+                          <MapPin size={10} /> GPS
+                        </span>
+                      ) : (
+                        <span className="text-xs text-ink-faint">{r.source}</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {history.items.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="py-8 text-center text-ink-faint">
+                    <td colSpan={6} className="py-8 text-center text-ink-faint">
                       No attendance records yet.
                     </td>
                   </tr>

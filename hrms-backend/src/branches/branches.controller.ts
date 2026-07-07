@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { BranchesService } from './branches.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
+import { SetBranchGeoDto } from './dto/set-branch-geo.dto';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { TenantId } from '../common/decorators/tenant.decorator';
 import { Permissions } from '../common/decorators/permissions.decorator';
@@ -37,6 +38,12 @@ export class BranchesController {
   @Permissions('branch.update')
   update(@TenantId() companyId: string, @Param('id') id: string, @Body() dto: UpdateBranchDto) {
     return this.branchesService.update(companyId, id, dto);
+  }
+
+  @Patch(':id/geo')
+  @Permissions('branch.update')
+  setGeoLocation(@TenantId() companyId: string, @Param('id') id: string, @Body() dto: SetBranchGeoDto) {
+    return this.branchesService.setGeoLocation(companyId, id, dto);
   }
 
   @Delete(':id')

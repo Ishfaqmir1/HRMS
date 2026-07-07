@@ -308,6 +308,81 @@ export interface PayrollDashboard {
 }
 
 // ============================================================
+// Recruitment / ATS
+// ============================================================
+
+export interface JobPosting {
+  id: string;
+  title: string;
+  department?: { id: string; name: string } | null;
+  departmentId?: string | null;
+  location?: string | null;
+  employmentType: 'FULL_TIME' | 'PART_TIME' | 'CONTRACT' | 'INTERN' | 'PROBATION';
+  minSalary?: number | null;
+  maxSalary?: number | null;
+  description?: string | null;
+  requirements?: string | null;
+  responsibilities?: string | null;
+  openings: number;
+  status: 'DRAFT' | 'PUBLISHED' | 'CLOSED' | 'ON_HOLD';
+  publishedAt?: string | null;
+  createdAt: string;
+  _count?: { applications: number };
+}
+
+export interface JobApplication {
+  id: string;
+  jobPostingId: string;
+  jobPosting?: { id: string; title: string } | null;
+  candidateName: string;
+  candidateEmail: string;
+  candidatePhone?: string | null;
+  resumeUrl?: string | null;
+  coverLetter?: string | null;
+  source?: string | null;
+  status: 'NEW' | 'SCREENING' | 'SHORTLISTED' | 'INTERVIEW' | 'OFFERED' | 'HIRED' | 'REJECTED' | 'WITHDRAWN';
+  notes?: string | null;
+  rating?: number | null;
+  createdAt: string;
+  interviews?: Interview[];
+}
+
+export interface Interview {
+  id: string;
+  applicationId: string;
+  application?: { id: string; candidateName: string; candidateEmail: string; jobPosting?: { title: string } } | null;
+  interviewerIds: string[];
+  title: string;
+  type?: string | null;
+  scheduledAt: string;
+  durationMinutes: number;
+  location?: string | null;
+  status: 'SCHEDULED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'RESCHEDULED';
+  feedback?: string | null;
+  rating?: number | null;
+  createdAt: string;
+}
+
+export interface RecruitmentDashboard {
+  activeJobs: number;
+  totalApplications: number;
+  pendingInterviews: number;
+  recentApplications: JobApplication[];
+  stageCounts: { status: string; _count: number }[];
+}
+
+// ============================================================
+// Common
+// ============================================================
+
+export interface Department {
+  id: string;
+  name: string;
+  code?: string | null;
+  branchId?: string | null;
+}
+
+// ============================================================
 // Admin — Branch
 // ============================================================
 

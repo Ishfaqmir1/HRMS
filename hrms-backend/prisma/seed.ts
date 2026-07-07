@@ -20,6 +20,7 @@ const MODULES: Record<string, string[]> = {
   leavebalance: ['read', 'update'],
   leave: ['create', 'read', 'update', 'delete', 'approve'],
   payroll: ['create', 'read', 'update', 'delete', 'approve', 'run'],
+  recruitment: ['create', 'read', 'update', 'delete'],
   audit: ['read'],
 };
 

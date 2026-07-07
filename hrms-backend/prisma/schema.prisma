@@ -148,6 +148,9 @@ model Company {
   loans             Loan[]
   reimbursementCategories ReimbursementCategory[]
   reimbursements    Reimbursement[]
+  jobPostings       JobPosting[]
+  jobApplications   JobApplication[]
+  interviews        Interview[]
 
   @@map("companies")
 }
@@ -209,6 +212,7 @@ model Department {
   children  Department[] @relation("DepartmentHierarchy")
   employees Employee[]
   teams     Team[]
+  jobPostings JobPosting[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -808,4 +812,107 @@ model Reimbursement {
   @@index([companyId])
   @@index([employeeId])
   @@map("reimbursements")
+}
+
+// ----------------------------------------------------------------------------
+// Phase 4: Recruitment / ATS
+// ----------------------------------------------------------------------------
+
+enum JobStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  ON_HOLD
+}
+
+enum ApplicationStatus {
+  NEW
+  SCREENING
+  SHORTLISTED
+  INTERVIEW
+  OFFERED
+  HIRED
+  REJECTED
+  WITHDRAWN
+}
+
+enum InterviewStatus {
+  SCHEDULED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  RESCHEDULED
+}
+
+model JobPosting {
+  id              String    @id @default(uuid())
+  companyId       String
+  title           String
+  departmentId    String?
+  location        String?
+  employmentType  EmploymentType @default(FULL_TIME)
+  minSalary       Float?
+  maxSalary       Float?
+  currency        String         @default("USD")
+  description     String?
+  requirements    String?
+  responsibilities String?
+  openings        Int            @default(1)
+  status          JobStatus      @default(DRAFT)
+  publishedAt     DateTime?
+  closedAt        DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  company     Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  department  Department?     @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  applications JobApplication[]
+  @@index([companyId])
+  @@index([status])
+  @@map("job_postings")
+}
+
+model JobApplication {
+  id            String            @id @default(uuid())
+  companyId     String
+  jobPostingId  String
+  candidateName  String
+  candidateEmail String
+  candidatePhone String?
+  resumeUrl     String?
+  coverLetter   String?
+  source        String?
+  status        ApplicationStatus @default(NEW)
+  notes         String?
+  rating        Int?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  company    Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  jobPosting JobPosting  @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
+  interviews Interview[]
+  @@index([companyId])
+  @@index([jobPostingId])
+  @@index([status])
+  @@map("job_applications")
+}
+
+model Interview {
+  id              String          @id @default(uuid())
+  companyId       String
+  applicationId   String
+  interviewerIds  String[]
+  title           String
+  type            String?
+  scheduledAt     DateTime
+  durationMinutes Int             @default(60)
+  location        String?
+  status          InterviewStatus @default(SCHEDULED)
+  feedback        String?
+  rating          Int?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  company     Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  application JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  @@index([companyId])
+  @@index([applicationId])
+  @@map("interviews")
 }

@@ -22,6 +22,13 @@ import { EssModule } from './ess/ess.module';
 import { GeoFenceModule } from './geo-fence/geo-fence.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { RecruitmentModule } from './recruitment/recruitment.module';
+import { DocumentsModule } from './documents/documents.module';
+import { TaxDeclarationsModule } from './tax-declarations/tax-declarations.module';
+import { AssetsModule } from './assets/assets.module';
+import { TrainingModule } from './training/training.module';
+import { AnalyticsModule } from './analytics/analytics.module';
+import { BillingModule } from './billing/billing.module';
+import { AttendanceSecurityModule } from './attendance-security/attendance-security.module';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -66,6 +73,21 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 
     // Phase 4: Recruitment / ATS
     RecruitmentModule,
+
+    // Phase 5: Employee Self-Service
+    DocumentsModule,
+    TaxDeclarationsModule,
+    AssetsModule,
+    TrainingModule,
+
+    // Phase 6: Analytics & Dashboards
+    AnalyticsModule,
+
+    // Phase 7: SaaS Billing
+    BillingModule,
+
+    // Phase 8: Attendance Security (16 layers)
+    AttendanceSecurityModule,
   ],
   providers: [
     // Order matters: auth first, then throttling, exception handling, response shaping.

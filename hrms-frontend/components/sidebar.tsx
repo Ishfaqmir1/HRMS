@@ -3,13 +3,28 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { clsx } from 'clsx';
-import { LayoutDashboard, Users, Clock, CalendarDays, Timer, Sun, MapPin, Shield, Building2, DollarSign, Briefcase } from 'lucide-react';
+import { LayoutDashboard, Users, Clock, CalendarDays, Timer, Sun, MapPin, Shield, Building2, DollarSign, Briefcase, BarChart3, Smartphone, QrCode, Camera } from 'lucide-react';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/employees', label: 'Employees', icon: Users },
   { href: '/attendance', label: 'Attendance', icon: Clock },
   { href: '/leave', label: 'Leave', icon: CalendarDays },
+];
+
+const ESS_ITEMS = [
+  { href: '/ess', label: 'ESS Portal', icon: Users },
+  { href: '/ess/profile', label: 'My Profile', icon: Users },
+  { href: '/ess/documents', label: 'Documents', icon: Users },
+  { href: '/ess/payslips', label: 'Payslips', icon: Users },
+  { href: '/ess/tax-declarations', label: 'Tax Declarations', icon: Users },
+  { href: '/ess/attendance', label: 'Attendance Calendar', icon: Clock },
+  { href: '/ess/leave', label: 'Leave History', icon: CalendarDays },
+  { href: '/ess/expenses', label: 'Expense Claims', icon: DollarSign },
+  { href: '/ess/devices', label: 'My Devices', icon: Smartphone },
+  { href: '/ess/assets', label: 'Assets', icon: Users },
+  { href: '/ess/training', label: 'Training', icon: Users },
 ];
 
 const RECRUITMENT_ITEMS = [
@@ -28,6 +43,8 @@ const PAYROLL_ITEMS = [
 ];
 
 const ADMIN_ITEMS = [
+  { href: '/billing', label: 'Billing', icon: DollarSign },
+  { href: '/attendance/security', label: 'Attendance Security', icon: Shield },
   { href: '/shifts', label: 'Shifts', icon: Timer },
   { href: '/holidays', label: 'Holidays', icon: Sun },
   { href: '/branches', label: 'Branches', icon: MapPin },
@@ -46,6 +63,26 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-1 px-3">
+        <div className="pt-4 pb-1">
+          <p className="px-3 text-xs font-medium uppercase tracking-wider text-white/30">Employee Self-Service</p>
+        </div>
+        {ESS_ITEMS.map(({ href, label, icon: Icon }) => {
+          const active = pathname === href || pathname?.startsWith(href + '/');
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={clsx(
+                'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                active ? 'bg-white/10 text-white' : 'text-white/60 hover:bg-white/5 hover:text-white',
+              )}
+            >
+              <Icon size={16} strokeWidth={2} />
+              {label}
+            </Link>
+          );
+        })}
+
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname?.startsWith(href + '/');
           return (

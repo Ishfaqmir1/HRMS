@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AttendanceService } from '../attendance/attendance.service';
 import { LeaveService } from '../leave/leave.service';
 import { HolidaysService } from '../holidays/holidays.service';
+import { AttendanceRegularizationService } from '../attendance-regularization/attendance-regularization.service';
 import { UpdateMyProfileDto } from './dto/update-profile.dto';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 
@@ -13,6 +14,7 @@ export class EssService {
     private attendanceService: AttendanceService,
     private leaveService: LeaveService,
     private holidaysService: HolidaysService,
+    private regularizationService: AttendanceRegularizationService,
   ) {}
 
   // ---- Profile ----
@@ -222,6 +224,16 @@ export class EssService {
       where: { employeeId },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  // ---- Attendance Regularization ----
+
+  async myRegularizations(employeeId: string, query: PaginationQueryDto) {
+    return this.regularizationService.myRequests(employeeId, query);
+  }
+
+  async createRegularization(companyId: string, employeeId: string, dto: any) {
+    return this.regularizationService.create(companyId, employeeId, dto);
   }
 
   // ---- Assets ----

@@ -128,6 +128,24 @@ export class EssController {
     return this.essService.myAssets(user.employeeId!);
   }
 
+  // ---- Attendance Regularization ----
+
+  @Get('attendance/regularizations')
+  myRegularizations(@CurrentUser() user: AuthenticatedUser, @Query() query: PaginationQueryDto) {
+    this.assertHasEmployeeProfile(user);
+    return this.essService.myRegularizations(user.employeeId!, query);
+  }
+
+  @Post('attendance/regularizations')
+  createRegularization(
+    @TenantId() companyId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: any,
+  ) {
+    this.assertHasEmployeeProfile(user);
+    return this.essService.createRegularization(companyId, user.employeeId!, dto);
+  }
+
   // ---- Training ----
 
   @Get('training')

@@ -373,6 +373,48 @@ export interface RecruitmentDashboard {
 }
 
 // ============================================================
+// Attendance Regularization
+// ============================================================
+
+export interface AttendanceRegularization {
+  id: string;
+  companyId: string;
+  employeeId: string;
+  date: string;
+  attendanceId: string | null;
+  reason: string;
+  requestedCheckIn: string | null;
+  requestedCheckOut: string | null;
+  requestedStatus: string | null;
+  notes: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  approvedById: string | null;
+  approvedAt: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  employee?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    employeeCode: string;
+  };
+  attendance?: {
+    id: string;
+    checkIn: string | null;
+    checkOut: string | null;
+    status: string;
+    source: string;
+    date: string;
+  } | null;
+  approvedBy?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+  } | null;
+}
+
+// ============================================================
 // Common
 // ============================================================
 

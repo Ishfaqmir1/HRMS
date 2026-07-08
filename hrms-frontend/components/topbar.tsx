@@ -2,12 +2,16 @@
 
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { LogOut } from 'lucide-react';
+import { LogOut, Menu } from 'lucide-react';
 import { api, unwrap } from '@/lib/api-client';
 import { clearSession, getRefreshToken } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 
-export function Topbar() {
+interface TopbarProps {
+  onMenuClick?: () => void;
+}
+
+export function Topbar({ onMenuClick }: TopbarProps) {
   const router = useRouter();
 
   const { data: profile } = useQuery<{ firstName: string; lastName: string }>({
@@ -21,17 +25,29 @@ export function Topbar() {
     try {
       if (refreshToken) await api.post('/auth/logout', { refreshToken });
     } catch {
-      // best-effort — clear the local session regardless
+      // best-effort
     }
     clearSession();
     router.push('/login');
   }
 
   return (
-    <header className="flex h-16 items-center justify-end border-b border-border bg-white px-8">
+    <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-border bg-white/80 px-4 backdrop-blur-md sm:px-6 lg:px-8">
+      {/* Mobile hamburger */}
+      <button
+        onClick={onMenuClick}
+        className="-ml-1 rounded-md p-2 text-ink-soft hover:bg-paper md:hidden"
+        aria-label="Open menu"
+      >
+        <Menu size={20} />
+      </button>
+
+      {/* Spacer */}
+      <div className="flex-1" />
+
       <div className="flex items-center gap-4">
         {profile && (
-          <span className="text-sm text-ink-soft">
+          <span className="hidden text-sm text-ink-soft sm:block">
             {profile.firstName} {profile.lastName}
           </span>
         )}

@@ -29,6 +29,7 @@ import { TrainingModule } from './training/training.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { BillingModule } from './billing/billing.module';
 import { AttendanceSecurityModule } from './attendance-security/attendance-security.module';
+import { AttendanceRegularizationModule } from './attendance-regularization/attendance-regularization.module';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -88,6 +89,9 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 
     // Phase 8: Attendance Security (16 layers)
     AttendanceSecurityModule,
+
+    // Phase 9: Attendance Regularization
+    AttendanceRegularizationModule,
   ],
   providers: [
     // Order matters: auth first, then throttling, exception handling, response shaping.

@@ -25,7 +25,7 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true, // strips properties not in the DTO
-      forbidNonWhitelisted: true,
+      forbidNonWhitelisted: false, // allows extra query params like ?status= on list endpoints
       transform: true,
       transformOptions: { enableImplicitConversion: true },
     }),

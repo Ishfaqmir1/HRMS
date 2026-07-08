@@ -58,6 +58,12 @@ enum AttendanceSource {
   MANUAL
 }
 
+enum RegularizationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum LeaveRequestStatus {
   PENDING
   APPROVED
@@ -138,7 +144,8 @@ model Company {
   users         User[]
   employees     Employee[]
   roles         Role[]
-  auditLogs     AuditLog[]
+  auditLogs      AuditLog[]
+  attendanceRegularizations AttendanceRegularization[]
   shifts        Shift[]
   holidays      Holiday[]
   attendanceRecords AttendanceRecord[]
@@ -299,6 +306,7 @@ model User {
   refreshTokens  RefreshToken[]
   auditLogs      AuditLog[]
 
+
   @@unique([companyId, email])
   @@index([companyId])
   @@map("users")
@@ -434,6 +442,9 @@ model Employee {
   faceEnrollments       FaceEnrollment[]
   attendancePhotos      AttendancePhoto[]
   attendanceSecurityLogs AttendanceSecurityLog[]
+  attendanceRegularizations AttendanceRegularization[]
+
+  approvedRegularizations AttendanceRegularization[]  @relation("ApproverRegularizations")
 
   @@unique([companyId, employeeCode])
   @@index([companyId])
@@ -743,12 +754,43 @@ model AttendanceRecord {
   company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   photos   AttendancePhoto[]
+  regularizations AttendanceRegularization[]
 
   @@unique([employeeId, date])
   @@index([companyId])
   @@index([employeeId])
   @@index([date])
   @@map("attendance_records")
+}
+
+model AttendanceRegularization {
+  id              String               @id @default(uuid())
+  companyId       String
+  employeeId      String
+  date            DateTime             // The attendance date being regularized
+  attendanceId    String?              // Optional link to existing attendance record
+  reason          String               // Employee's explanation for the request
+  requestedCheckIn  DateTime?
+  requestedCheckOut DateTime?
+  requestedStatus   AttendanceStatus? // What status change is requested (e.g. PRESENT instead of ABSENT)
+  notes           String?              // Additional employee notes
+  status          RegularizationStatus @default(PENDING)
+  approvedById    String?
+  approvedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  company    Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee   Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  attendance AttendanceRecord? @relation(fields: [attendanceId], references: [id], onDelete: SetNull)
+  approvedBy Employee?         @relation("ApproverRegularizations", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@unique([employeeId, date])
+  @@index([companyId])
+  @@index([employeeId])
+  @@index([status])
+  @@map("attendance_regularizations")
 }
 
 // ----------------------------------------------------------------------------

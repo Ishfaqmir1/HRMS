@@ -94,7 +94,7 @@ export default function EmployeesPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="ledger-tab font-serif text-2xl font-semibold text-ink">Employees</h1>
         <Button onClick={() => setShowForm((v) => !v)}>
           {showForm ? <X size={16} /> : <Plus size={16} />}
@@ -123,7 +123,7 @@ export default function EmployeesPage() {
                     </button>
                   </div>
                   <p className="mt-3 text-xs text-ink-faint">
-                    The employee can sign in with their work email and this temporary password. They'll be prompted to
+                    The employee can sign in with their work email and this temporary password. They&apos;ll be prompted to
                     change it on first login.
                   </p>
                 </div>
@@ -233,6 +233,7 @@ export default function EmployeesPage() {
 
           {data && (
             <>
+              <div className="table-responsive">
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-border text-xs uppercase tracking-wide text-ink-faint">
@@ -269,6 +270,7 @@ export default function EmployeesPage() {
                   )}
                 </tbody>
               </table>
+              </div>
 
               <div className="mt-4 flex items-center justify-between text-sm text-ink-faint">
                 <span>

@@ -24,12 +24,14 @@ import { PayrollModule } from './payroll/payroll.module';
 import { RecruitmentModule } from './recruitment/recruitment.module';
 import { DocumentsModule } from './documents/documents.module';
 import { TaxDeclarationsModule } from './tax-declarations/tax-declarations.module';
+import { RedisCacheModule } from './redis/redis-cache.module';
 import { AssetsModule } from './assets/assets.module';
 import { TrainingModule } from './training/training.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { BillingModule } from './billing/billing.module';
 import { AttendanceSecurityModule } from './attendance-security/attendance-security.module';
 import { AttendanceRegularizationModule } from './attendance-regularization/attendance-regularization.module';
+import { StatutoryComplianceModule } from './statutory-compliance/statutory-compliance.module';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -49,6 +51,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     }),
     EventEmitterModule.forRoot(),
     PrismaModule,
+    RedisCacheModule,
 
     // Phase 1: Foundation
     AuthModule,
@@ -92,6 +95,9 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 
     // Phase 9: Attendance Regularization
     AttendanceRegularizationModule,
+
+    // Phase 10: Indian Statutory Compliance (PF, ESI, PT, TDS)
+    StatutoryComplianceModule,
   ],
   providers: [
     // Order matters: auth first, then throttling, exception handling, response shaping.

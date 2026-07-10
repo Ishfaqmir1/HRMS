@@ -250,7 +250,7 @@ export default function AttendanceRegularizationPage() {
                         <div className="flex flex-col items-center gap-2">
                           <Clock size={32} className="text-ink-faint/50" />
                           <p>No regularization requests yet.</p>
-                          <p className="text-xs">Click "New Request" to submit one.</p>
+                          <p className="text-xs">Click &quot;New Request&quot; to submit one.</p>
                         </div>
                       </TableCell>
                     </TableRow>

@@ -53,6 +53,8 @@ function PulsingCircle({
   const map = useMap();
   const pulseRef = useRef<L.Circle | null>(null);
 
+  const [centerLat, centerLng] = center;
+
   useEffect(() => {
     const pulse = L.circle(center, {
       radius,
@@ -68,7 +70,7 @@ function PulsingCircle({
     return () => {
       map.removeLayer(pulse);
     };
-  }, [map, center[0], center[1], radius]);
+  }, [map, centerLat, centerLng, radius]);
 
   useEffect(() => {
     if (pulseRef.current) {

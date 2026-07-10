@@ -8,6 +8,7 @@ import {
 } from './dto/recruitment.dto';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { TenantId } from '../common/decorators/tenant.decorator';
+import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { Permissions } from '../common/decorators/permissions.decorator';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 
@@ -23,8 +24,10 @@ export class RecruitmentController {
   // ======================================================================
   @Get('dashboard')
   @Permissions('recruitment.read')
-  getDashboard(@TenantId() companyId: string) {
-    return this.recruitmentService.getDashboard(companyId);
+  getDashboard(@CurrentUser() user: AuthenticatedUser) {
+    // Use user.companyId instead of @TenantId() so super admin
+    // (who has companyId: null) can still access dashboard.
+    return this.recruitmentService.getDashboard(user.companyId ?? '');
   }
 
   // ======================================================================

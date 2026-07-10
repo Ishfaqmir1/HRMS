@@ -1,11 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AttendanceService } from '../attendance/attendance.service';
 import { LeaveService } from '../leave/leave.service';
 import { HolidaysService } from '../holidays/holidays.service';
 import { AttendanceRegularizationService } from '../attendance-regularization/attendance-regularization.service';
 import { UpdateMyProfileDto } from './dto/update-profile.dto';
+import { CreateExpenseDto } from './dto/create-expense.dto';
+import { CreateRegularizationDto } from '../attendance-regularization/dto/attendance-regularization.dto';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 
 @Injectable()
 export class EssService {
@@ -19,7 +22,27 @@ export class EssService {
 
   // ---- Profile ----
 
-  async getProfile(employeeId: string) {
+  async getProfile(user: AuthenticatedUser) {
+    if (!user.employeeId) {
+      if (user.roles.includes('super-admin')) {
+        return {
+          id: user.userId,
+          firstName: 'Super',
+          lastName: 'Admin',
+          workEmail: user.email,
+          department: null,
+          branch: null,
+          designation: null,
+          shift: null,
+          reportingManager: null,
+          team: null,
+        };
+      }
+
+      throw new ForbiddenException('This account is not linked to an employee profile.');
+    }
+
+    const employeeId = user.employeeId;
     const employee = await this.prisma.employee.findUnique({
       where: { id: employeeId },
       include: {
@@ -41,9 +64,30 @@ export class EssService {
 
   // ---- Dashboard ----
 
-  async getDashboard(companyId: string, employeeId: string) {
+  async getDashboard(companyId: string, user: AuthenticatedUser) {
+    if (!user.employeeId) {
+      if (user.roles.includes('super-admin')) {
+        return {
+          profile: {
+            id: user.userId,
+            name: 'Super Admin',
+            designation: 'Platform Administrator',
+            department: null,
+            shift: null,
+          },
+          attendanceToday: null,
+          leaveBalances: [],
+          pendingLeaveRequests: 0,
+          upcomingHolidays: [],
+        };
+      }
+
+      throw new ForbiddenException('This account is not linked to an employee profile.');
+    }
+
+    const employeeId = user.employeeId;
     const [profile, todayAttendance, leaveBalances, upcomingHolidays, pendingLeaveRequests] = await Promise.all([
-      this.getProfile(employeeId),
+      this.getProfile(user),
       this.attendanceService.myToday(employeeId),
       this.leaveService.myBalances(employeeId),
       this.holidaysService.findAll(companyId, new Date().getFullYear()),
@@ -171,7 +215,7 @@ export class EssService {
     });
   }
 
-  async createExpense(companyId: string, employeeId: string, dto: any) {
+  async createExpense(companyId: string, employeeId: string, dto: CreateExpenseDto) {
     const category = await this.prisma.reimbursementCategory.findFirst({
       where: { id: dto.categoryId, companyId },
     });
@@ -232,7 +276,7 @@ export class EssService {
     return this.regularizationService.myRequests(employeeId, query);
   }
 
-  async createRegularization(companyId: string, employeeId: string, dto: any) {
+  async createRegularization(companyId: string, employeeId: string, dto: CreateRegularizationDto) {
     return this.regularizationService.create(companyId, employeeId, dto);
   }
 

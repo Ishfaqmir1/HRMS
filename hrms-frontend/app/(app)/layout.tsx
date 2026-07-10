@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { isAuthenticated } from '@/lib/auth';
 import { Sidebar } from '@/components/sidebar';
@@ -9,12 +9,17 @@ import { MobileNav } from '@/components/mobile-nav';
 import { X } from 'lucide-react';
 
 const BOTTOM_NAV_PATHS = ['/dashboard', '/attendance', '/leave', '/employees', '/ess'];
+const SWIPE_THRESHOLD = 80;
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [checked, setChecked] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState(0);
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -39,6 +44,33 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return () => { document.body.style.overflow = ''; };
   }, [sidebarOpen]);
 
+  // Swipe-to-close gesture handlers
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    const deltaX = e.touches[0].clientX - touchStartX.current;
+    const deltaY = Math.abs(e.touches[0].clientY - touchStartY.current);
+
+    // Only track horizontal swipes (ignore vertical scrolling)
+    if (deltaX < 0 && deltaY < 30) {
+      setIsDragging(true);
+      setDragOffset(Math.max(deltaX, -290));
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    if (isDragging) {
+      if (dragOffset < -SWIPE_THRESHOLD) {
+        setSidebarOpen(false);
+      }
+      setIsDragging(false);
+      setDragOffset(0);
+    }
+  }, [isDragging, dragOffset]);
+
   const showBottomNav = BOTTOM_NAV_PATHS.some((p) => pathname === p || pathname?.startsWith(p + '/'));
 
   if (!checked) return null;
@@ -46,28 +78,47 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative min-h-screen bg-paper">
       {/* Desktop sidebar — always visible on md+ */}
-      <div className="hidden md:fixed md:inset-y-0 md:flex md:w-60">
+      <div className="hidden md:fixed md:inset-y-0 md:flex md:w-60 md:h-screen">
         <Sidebar />
       </div>
 
-      {/* Mobile drawer — overlay on small screens */}
-      {sidebarOpen && (
-        <div
-          className="drawer-backdrop fixed inset-0 z-40 bg-black/40 md:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+      {/* Mobile drawer backdrop */}
       <div
-        className={`fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ease-out md:hidden ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity duration-300 md:hidden ${
+          sidebarOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
         }`}
+        style={isDragging ? { opacity: Math.min(Math.abs(dragOffset) / 290, 0.5) } : undefined}
+        onClick={() => setSidebarOpen(false)}
+      />
+
+      {/* Mobile sidebar drawer */}
+      <div
+        className={`fixed inset-y-0 left-0 z-50 w-72 will-change-transform md:hidden ${
+          isDragging ? '' : 'transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]'
+        }`}
+        style={{
+          transform: sidebarOpen
+            ? `translateX(${isDragging ? dragOffset : 0}px)`
+            : 'translateX(-100%)',
+        }}
+        onTouchStart={sidebarOpen ? handleTouchStart : undefined}
+        onTouchMove={sidebarOpen ? handleTouchMove : undefined}
+        onTouchEnd={sidebarOpen ? handleTouchEnd : undefined}
       >
+        {/* Swipe handle indicator */}
+        <div className="absolute right-0 top-0 z-10 flex h-full w-1 items-center justify-center md:hidden">
+          <div className="h-12 w-1 rounded-full bg-white/20" />
+        </div>
+
         <Sidebar />
+
+        {/* Close button */}
         <button
           onClick={() => setSidebarOpen(false)}
-          className="absolute right-3 top-5 rounded-md p-1 text-white/60 hover:text-white"
+          className="absolute right-3 top-4 z-10 rounded-lg bg-gray-100 p-2 text-gray-500 transition-all duration-150 hover:bg-gray-200 hover:text-gray-700 active:scale-90"
+          aria-label="Close menu"
         >
-          <X size={20} />
+          <X size={18} />
         </button>
       </div>
 
@@ -75,13 +126,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen flex-col md:pl-60">
         <Topbar onMenuClick={() => setSidebarOpen(true)} />
 
-        <main className="page-enter flex-1 px-4 pb-24 pt-6 sm:px-6 lg:px-8">
+        <main className="page-enter flex-1 px-4 pb-24 pt-5 md:pb-8 sm:px-6 sm:pt-6 lg:px-8">
           {children}
         </main>
 
         {/* Mobile bottom navigation */}
         {showBottomNav && (
-          <div className="fixed bottom-0 left-0 right-0 z-30 md:hidden">
+          <div className="fixed bottom-0 left-0 right-0 z-30 md:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
             <MobileNav currentPath={pathname} />
           </div>
         )}

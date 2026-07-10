@@ -58,7 +58,7 @@ export default function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="ledger-tab font-serif text-2xl font-semibold text-ink">My Profile</h1>
         <Button onClick={openEdit}>Edit Profile</Button>
       </div>
@@ -181,7 +181,7 @@ export default function ProfilePage() {
               <p className="text-sm text-danger">{(updateMut.error as any)?.response?.data?.message || 'Failed to update.'}</p>
             )}
             <DialogFooter>
-              <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
               <Button type="submit" isLoading={updateMut.isPending}>Save</Button>
             </DialogFooter>
           </form>

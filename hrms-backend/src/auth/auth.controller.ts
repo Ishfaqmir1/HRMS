@@ -1,5 +1,5 @@
 import { Body, Controller, Post, Req } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Request } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
@@ -37,12 +37,14 @@ export class AuthController {
     return this.authService.refresh(dto.refreshToken);
   }
 
+  @ApiBearerAuth()
   @Post('logout')
   @ApiOperation({ summary: 'Revoke the given refresh token (logs out current device)' })
   logout(@CurrentUser() user: AuthenticatedUser, @Body() dto: RefreshTokenDto) {
     return this.authService.logout(user.userId, dto.refreshToken);
   }
 
+  @ApiBearerAuth()
   @Post('logout-all')
   @ApiOperation({ summary: 'Revoke all refresh tokens for the current user (logs out everywhere)' })
   logoutAll(@CurrentUser() user: AuthenticatedUser) {

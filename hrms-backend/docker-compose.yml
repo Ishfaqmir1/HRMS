@@ -46,7 +46,8 @@ services:
       REDIS_HOST: redis
     ports:
       - '3001:3001'
-    command: sh -c "npx prisma migrate deploy && npx prisma db seed && node dist/main"
+    # Note: seed only runs on first deploy. Remove 'npx prisma db seed' if data already exists
+    command: sh -c "npx prisma migrate deploy && node dist/main"
 
 volumes:
   hrms_postgres_data:

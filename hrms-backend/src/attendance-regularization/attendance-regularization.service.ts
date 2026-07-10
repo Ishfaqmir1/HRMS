@@ -42,6 +42,9 @@ export class AttendanceRegularizationService {
         where: { id: existing.id },
         data: {
           status: 'PENDING',
+          approvedById: null,
+          approvedAt: null,
+          rejectionReason: null,
           reason: dto.reason,
           attendanceId: dto.attendanceId ?? existing.attendanceId,
           requestedCheckIn: requestedCheckIn ?? existing.requestedCheckIn,

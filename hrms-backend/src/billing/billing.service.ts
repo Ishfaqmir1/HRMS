@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -8,6 +8,7 @@ import {
 
 @Injectable()
 export class BillingService {
+  private readonly logger = new Logger(BillingService.name);
   private stripe: any = null;
 
   constructor(
@@ -149,6 +150,7 @@ export class BillingService {
     const updateData: any = {
       billingPlanId: plan.id,
       subscriptionPlan: plan.slug.toUpperCase() as any,
+      billingCycle: dto.billingCycle || company.billingCycle || 'MONTHLY',
     };
 
     // If switching from TRIAL, clear trial
@@ -167,7 +169,7 @@ export class BillingService {
         updateData.stripeSubscriptionId = await this.createStripeSubscription(customerId, plan, dto.billingCycle || 'MONTHLY');
       } catch (e: any) {
         // Log but don't fail - allow local operation without Stripe
-        console.warn('Stripe operation failed:', e.message);
+        this.logger.warn('Stripe operation failed: ' + e.message);
       }
     }
 
@@ -321,7 +323,7 @@ export class BillingService {
       where: { companyId, deletedAt: null, status: { not: 'TERMINATED' } },
     });
 
-    return { allowed: current < max, max, current };
+    return { allowed: current <= max, max, current };
   }
 
   // ======================================================================

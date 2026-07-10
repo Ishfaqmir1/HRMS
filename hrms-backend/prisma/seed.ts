@@ -39,13 +39,16 @@ const ROLE_PERMISSIONS: Record<SystemRole, string[] | 'ALL'> = {
   HR_MANAGER: [
     'employee.create', 'employee.read', 'employee.update', 'employee.delete',
     'department.create', 'department.read', 'department.update',
-    'branch.read', 'designation.create', 'designation.read', 'designation.update',
-    'leave.read', 'leave.approve', 'attendance.read', 'attendance.approve',
+    'branch.create', 'branch.read', 'branch.update', 'branch.delete',
+    'designation.create', 'designation.read', 'designation.update',
+    'leave.create', 'leave.read', 'leave.approve', 'attendance.read', 'attendance.approve',
     'user.invite', 'role.assign',
     'shift.create', 'shift.read', 'shift.update', 'shift.delete', 'shift.assign',
     'holiday.create', 'holiday.read', 'holiday.update', 'holiday.delete',
     'leavetype.create', 'leavetype.read', 'leavetype.update', 'leavetype.delete',
     'leavebalance.read', 'leavebalance.update',
+    'payroll.read', 'payroll.create',
+    'recruitment.read',
   ],
   PAYROLL_MANAGER: [
     'payroll.create', 'payroll.read', 'payroll.update', 'payroll.approve', 'payroll.run',
@@ -54,15 +57,21 @@ const ROLE_PERMISSIONS: Record<SystemRole, string[] | 'ALL'> = {
   RECRUITER: ['employee.read', 'employee.create'],
   FINANCE: ['payroll.read', 'payroll.approve'],
   DEPARTMENT_HEAD: [
-    'employee.read', 'leave.read', 'leave.approve', 'attendance.read', 'attendance.approve',
+    'employee.read', 'employee.update',
+    'leave.read', 'leave.approve', 'attendance.read', 'attendance.approve',
+    'payroll.read',
     'shift.read', 'holiday.read', 'leavebalance.read',
   ],
   TEAM_LEAD: [
-    'employee.read', 'leave.read', 'leave.approve', 'attendance.read',
+    'employee.read', 'employee.update',
+    'leave.read', 'leave.approve', 'attendance.read',
+    'payroll.read',
     'shift.read', 'holiday.read', 'leavebalance.read',
   ],
   EMPLOYEE: [
+    'employee.read', 'employee.update',
     'leave.create', 'leave.read', 'attendance.create', 'attendance.read',
+    'payroll.read', 'payroll.create',
     'shift.read', 'holiday.read', 'leavebalance.read',
   ],
   AUDITOR: ['audit.read', 'employee.read', 'payroll.read', 'attendance.read', 'leave.read'],
@@ -345,12 +354,1102 @@ async function main() {
     });
   }
 
+  // ====================================================================
+  // Phase 2: Comprehensive Demo Data
+  // ====================================================================
+  console.log('Seeding comprehensive demo data...');
+
+  // --- Branches ---
+  const headOffice = await prisma.branch.upsert({
+    where: { companyId_code: { companyId: demoCompany.id, code: 'HQ' } },
+    update: {},
+    create: {
+      companyId: demoCompany.id,
+      name: 'Head Office - San Francisco',
+      code: 'HQ',
+      addressLine1: '123 Market Street',
+      city: 'San Francisco',
+      state: 'California',
+      country: 'USA',
+      postalCode: '94105',
+      timezone: 'America/Los_Angeles',
+      isHeadOffice: true,
+      latitude: 37.7749,
+      longitude: -122.4194,
+    },
+  });
+
+  const nyBranch = await prisma.branch.upsert({
+    where: { companyId_code: { companyId: demoCompany.id, code: 'NYC' } },
+    update: {},
+    create: {
+      companyId: demoCompany.id,
+      name: 'New York Office',
+      code: 'NYC',
+      addressLine1: '350 Fifth Avenue',
+      city: 'New York',
+      state: 'New York',
+      country: 'USA',
+      postalCode: '10118',
+      timezone: 'America/New_York',
+      isHeadOffice: false,
+      latitude: 40.7128,
+      longitude: -74.0060,
+    },
+  });
+
+  // --- Departments ---
+  const engineeringDept = await prisma.department.upsert({
+    where: { companyId_code: { companyId: demoCompany.id, code: 'ENG' } },
+    update: {},
+    create: {
+      companyId: demoCompany.id, branchId: headOffice.id,
+      name: 'Engineering', code: 'ENG', isActive: true,
+    },
+  });
+
+  const hrDept = await prisma.department.upsert({
+    where: { companyId_code: { companyId: demoCompany.id, code: 'HR' } },
+    update: {},
+    create: {
+      companyId: demoCompany.id, branchId: headOffice.id,
+      name: 'Human Resources', code: 'HR', isActive: true,
+    },
+  });
+
+  const salesDept = await prisma.department.upsert({
+    where: { companyId_code: { companyId: demoCompany.id, code: 'SALES' } },
+    update: {},
+    create: {
+      companyId: demoCompany.id, branchId: nyBranch.id,
+      name: 'Sales', code: 'SALES', isActive: true,
+    },
+  });
+
+  const marketingDept = await prisma.department.upsert({
+    where: { companyId_code: { companyId: demoCompany.id, code: 'MRKT' } },
+    update: {},
+    create: {
+      companyId: demoCompany.id, branchId: headOffice.id,
+      name: 'Marketing', code: 'MRKT', isActive: true,
+    },
+  });
+
+  // --- Designations ---
+  const designations = [
+    { title: 'Software Engineer', level: 1 },
+    { title: 'Senior Software Engineer', level: 2 },
+    { title: 'Engineering Manager', level: 3 },
+    { title: 'HR Executive', level: 1 },
+    { title: 'HR Manager', level: 2 },
+    { title: 'Sales Representative', level: 1 },
+    { title: 'Sales Manager', level: 2 },
+    { title: 'Marketing Specialist', level: 1 },
+    { title: 'Product Designer', level: 1 },
+  ];
+  const createdDesignations: Record<string, string> = {};
+  for (const d of designations) {
+    const found = await prisma.designation.findFirst({
+      where: { companyId: demoCompany.id, title: d.title },
+    });
+    if (found) {
+      createdDesignations[d.title] = found.id;
+    } else {
+      const created = await prisma.designation.create({
+        data: { companyId: demoCompany.id, title: d.title, level: d.level },
+      });
+      createdDesignations[d.title] = created.id;
+    }
+  }
+
+  // --- Shifts ---
+  const generalShift = await prisma.shift.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000001' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000001',
+      companyId: demoCompany.id,
+      name: 'General Shift',
+      startTime: '09:00',
+      endTime: '18:00',
+      breakMinutes: 60,
+      gracePeriodMinutes: 15,
+      workingDays: [1, 2, 3, 4, 5],
+    },
+  });
+
+  const nightShift = await prisma.shift.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000002' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000002',
+      companyId: demoCompany.id,
+      name: 'Night Shift',
+      startTime: '22:00',
+      endTime: '06:00',
+      breakMinutes: 45,
+      gracePeriodMinutes: 10,
+      workingDays: [1, 2, 3, 4, 5, 6],
+    },
+  });
+
+  // --- Holidays (current year) ---
+  const currentYear = new Date().getFullYear();
+  const holidays = [
+    { name: "New Year's Day", date: new Date(currentYear, 0, 1), isOptional: false },
+    { name: 'Martin Luther King Jr. Day', date: new Date(currentYear, 0, 20), isOptional: false },
+    { name: 'Memorial Day', date: new Date(currentYear, 4, 26), isOptional: false },
+    { name: 'Independence Day', date: new Date(currentYear, 6, 4), isOptional: false },
+    { name: 'Labor Day', date: new Date(currentYear, 8, 1), isOptional: false },
+    { name: 'Thanksgiving Day', date: new Date(currentYear, 10, 27), isOptional: false },
+    { name: 'Christmas Day', date: new Date(currentYear, 11, 25), isOptional: false },
+    { name: 'Diwali (Optional)', date: new Date(currentYear, 9, 31), isOptional: true },
+  ];
+  for (const h of holidays) {
+    const exists = await prisma.holiday.findFirst({
+      where: { companyId: demoCompany.id, date: h.date },
+    });
+    if (!exists) {
+      await prisma.holiday.create({
+        data: { companyId: demoCompany.id, name: h.name, date: h.date, isOptional: h.isOptional },
+      });
+    }
+  }
+
+  // --- Leave Types ---
+  const annualLeave = await prisma.leaveType.upsert({
+    where: { companyId_code: { companyId: demoCompany.id, code: 'AL' } },
+    update: {},
+    create: {
+      companyId: demoCompany.id,
+      name: 'Annual Leave', code: 'AL',
+      daysPerYear: 20, isPaid: true, requiresApproval: true,
+    },
+  });
+
+  const sickLeave = await prisma.leaveType.upsert({
+    where: { companyId_code: { companyId: demoCompany.id, code: 'SL' } },
+    update: {},
+    create: {
+      companyId: demoCompany.id,
+      name: 'Sick Leave', code: 'SL',
+      daysPerYear: 12, isPaid: true, requiresApproval: false,
+    },
+  });
+
+  const personalLeave = await prisma.leaveType.upsert({
+    where: { companyId_code: { companyId: demoCompany.id, code: 'PL' } },
+    update: {},
+    create: {
+      companyId: demoCompany.id,
+      name: 'Personal Leave', code: 'PL',
+      daysPerYear: 5, isPaid: false, requiresApproval: true,
+    },
+  });
+
+  const maternityLeave = await prisma.leaveType.upsert({
+    where: { companyId_code: { companyId: demoCompany.id, code: 'ML' } },
+    update: {},
+    create: {
+      companyId: demoCompany.id,
+      name: 'Maternity Leave', code: 'ML',
+      daysPerYear: 90, isPaid: true, requiresApproval: true,
+      carryForward: false,
+    },
+  });
+
+  // --- Additional Users + Employees ---
+  const empRole = await prisma.role.findFirstOrThrow({
+    where: { companyId: null, slug: 'employee' },
+  });
+  const payrollRole = await prisma.role.findFirstOrThrow({
+    where: { companyId: null, slug: 'payroll-manager' },
+  });
+  const deptHeadRole = await prisma.role.findFirstOrThrow({
+    where: { companyId: null, slug: 'department-head' },
+  });
+
+  interface EmployeeSeed {
+    email: string; password: string; roleSlug: string;
+    code: string; firstName: string; lastName: string;
+    departmentId: string; designation: string; gender: 'MALE' | 'FEMALE' | 'OTHER';
+    dateOfJoining: Date; salary: number;
+  }
+
+  const employeesToSeed: EmployeeSeed[] = [
+    {
+      email: 'alice@demo.com', password: 'Demo123!', roleSlug: 'employee',
+      code: 'EMP-0002', firstName: 'Alice', lastName: 'Johnson',
+      departmentId: engineeringDept.id, designation: 'Software Engineer',
+      gender: 'FEMALE', dateOfJoining: new Date(currentYear - 2, 5, 1), salary: 75000,
+    },
+    {
+      email: 'bob@demo.com', password: 'Demo123!', roleSlug: 'employee',
+      code: 'EMP-0003', firstName: 'Bob', lastName: 'Smith',
+      departmentId: engineeringDept.id, designation: 'Senior Software Engineer',
+      gender: 'MALE', dateOfJoining: new Date(currentYear - 4, 2, 15), salary: 110000,
+    },
+    {
+      email: 'carol@demo.com', password: 'Demo123!', roleSlug: 'department-head',
+      code: 'EMP-0004', firstName: 'Carol', lastName: 'Williams',
+      departmentId: engineeringDept.id, designation: 'Engineering Manager',
+      gender: 'FEMALE', dateOfJoining: new Date(currentYear - 6, 1, 10), salary: 145000,
+    },
+    {
+      email: 'david@demo.com', password: 'Demo123!', roleSlug: 'employee',
+      code: 'EMP-0005', firstName: 'David', lastName: 'Brown',
+      departmentId: salesDept.id, designation: 'Sales Representative',
+      gender: 'MALE', dateOfJoining: new Date(currentYear - 1, 8, 1), salary: 55000,
+    },
+    {
+      email: 'eve@demo.com', password: 'Demo123!', roleSlug: 'employee',
+      code: 'EMP-0006', firstName: 'Eve', lastName: 'Davis',
+      departmentId: marketingDept.id, designation: 'Marketing Specialist',
+      gender: 'FEMALE', dateOfJoining: new Date(currentYear - 3, 3, 20), salary: 65000,
+    },
+    {
+      email: 'frank@demo.com', password: 'Demo123!', roleSlug: 'department-head',
+      code: 'EMP-0007', firstName: 'Frank', lastName: 'Miller',
+      departmentId: salesDept.id, designation: 'Sales Manager',
+      gender: 'MALE', dateOfJoining: new Date(currentYear - 5, 6, 5), salary: 125000,
+    },
+    {
+      email: 'grace@demo.com', password: 'Demo123!', roleSlug: 'payroll-manager',
+      code: 'EMP-0008', firstName: 'Grace', lastName: 'Wilson',
+      departmentId: hrDept.id, designation: 'HR Manager',
+      gender: 'FEMALE', dateOfJoining: new Date(currentYear - 3, 2, 1), salary: 85000,
+    },
+    {
+      email: 'henry@demo.com', password: 'Demo123!', roleSlug: 'recruiter',
+      code: 'EMP-0009', firstName: 'Henry', lastName: 'Taylor',
+      departmentId: hrDept.id, designation: 'HR Executive',
+      gender: 'MALE', dateOfJoining: new Date(currentYear - 1, 9, 15), salary: 55000,
+    },
+  ];
+
+  const createdEmployeeIds: string[] = [];
+  for (const emp of employeesToSeed) {
+    let user = await prisma.user.findFirst({
+      where: { companyId: demoCompany.id, email: emp.email },
+    });
+    if (!user) {
+      const hash = await bcrypt.hash(emp.password, 10);
+      user = await prisma.user.create({
+        data: {
+          companyId: demoCompany.id, email: emp.email, passwordHash: hash,
+          status: 'ACTIVE', isEmailVerified: true,
+        },
+      });
+      // Assign appropriate role
+      const role = emp.roleSlug === 'department-head' ? deptHeadRole
+        : emp.roleSlug === 'payroll-manager' ? payrollRole
+        : empRole;
+      await prisma.userRole.create({ data: { userId: user.id, roleId: role.id } });
+
+      const designationId = createdDesignations[emp.designation];
+      const employee = await prisma.employee.create({
+        data: {
+          companyId: demoCompany.id, userId: user.id,
+          employeeCode: emp.code, firstName: emp.firstName, lastName: emp.lastName,
+          workEmail: emp.email, dateOfJoining: emp.dateOfJoining,
+          departmentId: emp.departmentId, designationId,
+          gender: emp.gender, employmentType: 'FULL_TIME',
+          shiftId: generalShift.id, status: 'ACTIVE',
+          branchId: emp.departmentId === salesDept.id ? nyBranch.id : headOffice.id,
+        },
+      });
+      createdEmployeeIds.push(employee.id);
+    }
+  }
+
+  // --- Salary Structure ---
+  const standardStructure = await prisma.salaryStructure.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000010' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000010',
+      companyId: demoCompany.id,
+      name: 'Standard Engineering',
+      basic: 50000, housingAllowance: 15000, transportAllowance: 5000,
+      medicalAllowance: 5000, otherAllowances: 2000,
+      taxPercent: 20, pensionPercent: 5, insuranceDeduction: 2000,
+    },
+  });
+
+  const premiumStructure = await prisma.salaryStructure.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000011' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000011',
+      companyId: demoCompany.id,
+      name: 'Premium Engineering',
+      basic: 80000, housingAllowance: 25000, transportAllowance: 10000,
+      medicalAllowance: 10000, otherAllowances: 5000,
+      taxPercent: 25, pensionPercent: 6, insuranceDeduction: 3000,
+    },
+  });
+
+  // --- Employee Salaries ---
+  // We'll create salaries for the employees we just created
+  const salaryConfigs = [
+    { employeeIdx: 0, basic: 45000, housing: 12000, transport: 4000, medical: 4000, other: 2000, tax: 18, pension: 4, insurance: 1500 },
+    { employeeIdx: 1, basic: 65000, housing: 18000, transport: 6000, medical: 6000, other: 3000, tax: 22, pension: 5, insurance: 2500 },
+    { employeeIdx: 2, basic: 85000, housing: 25000, transport: 8000, medical: 8000, other: 5000, tax: 25, pension: 6, insurance: 3000 },
+    { employeeIdx: 3, basic: 35000, housing: 10000, transport: 3000, medical: 3000, other: 1500, tax: 15, pension: 4, insurance: 1000 },
+    { employeeIdx: 4, basic: 40000, housing: 11000, transport: 3500, medical: 3500, other: 1500, tax: 16, pension: 4, insurance: 1200 },
+    { employeeIdx: 5, basic: 75000, housing: 20000, transport: 7000, medical: 7000, other: 4000, tax: 24, pension: 5, insurance: 2500 },
+  ];
+  for (const sc of salaryConfigs) {
+    const empId = createdEmployeeIds[sc.employeeIdx];
+    if (!empId) continue;
+    const exists = await prisma.employeeSalary.findFirst({
+      where: { employeeId: empId, isActive: true },
+    });
+    if (!exists) {
+      await prisma.employeeSalary.create({
+        data: {
+          companyId: demoCompany.id, employeeId: empId, structureId: standardStructure.id,
+          effectiveFrom: new Date(currentYear, 0, 1),
+          basic: sc.basic, housingAllowance: sc.housing, transportAllowance: sc.transport,
+          medicalAllowance: sc.medical, otherAllowances: sc.other,
+          taxPercent: sc.tax, pensionPercent: sc.pension, insuranceDeduction: sc.insurance,
+          isActive: true,
+        },
+      });
+    }
+  }
+
+  // --- Reimbursement Categories ---
+  const reimbCategories = [
+    { name: 'Travel', description: 'Business travel expenses' },
+    { name: 'Meals', description: 'Client meals and team lunches' },
+    { name: 'Office Supplies', description: 'Stationery and small office items' },
+    { name: 'Internet', description: 'Home internet reimbursement' },
+  ];
+  for (const cat of reimbCategories) {
+    const exists = await prisma.reimbursementCategory.findFirst({
+      where: { companyId: demoCompany.id, name: cat.name },
+    });
+    if (!exists) {
+      await prisma.reimbursementCategory.create({
+        data: { companyId: demoCompany.id, name: cat.name, description: cat.description, maxAmount: 500 },
+      });
+    }
+  }
+
+  // --- Reimbursements (sample) ---
+  if (createdEmployeeIds.length > 0) {
+    const travelCat = await prisma.reimbursementCategory.findFirst({
+      where: { companyId: demoCompany.id, name: 'Travel' },
+    });
+    if (travelCat) {
+      const exists = await prisma.reimbursement.findFirst({
+        where: { employeeId: createdEmployeeIds[0], status: 'PENDING' },
+      });
+      if (!exists) {
+        await prisma.reimbursement.create({
+          data: {
+            companyId: demoCompany.id, employeeId: createdEmployeeIds[0],
+            categoryId: travelCat.id, amount: 250, description: 'Client visit taxi fare',
+            status: 'PENDING',
+          },
+        });
+        await prisma.reimbursement.create({
+          data: {
+            companyId: demoCompany.id, employeeId: createdEmployeeIds[1],
+            categoryId: travelCat.id, amount: 180, description: 'Airport pickup',
+            status: 'APPROVED',
+          },
+        });
+      }
+    }
+  }
+
+  // --- Job Postings ---
+  await prisma.jobPosting.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000020' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000020',
+      companyId: demoCompany.id, departmentId: engineeringDept.id,
+      title: 'Senior Frontend Developer', location: 'San Francisco, CA',
+      employmentType: 'FULL_TIME', minSalary: 120000, maxSalary: 160000,
+      description: 'We are looking for an experienced frontend developer to join our growing team.',
+      requirements: '5+ years experience with React, TypeScript, and modern CSS.',
+      openings: 2, status: 'PUBLISHED', publishedAt: new Date(),
+    },
+  });
+
+  await prisma.jobPosting.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000021' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000021',
+      companyId: demoCompany.id, departmentId: salesDept.id,
+      title: 'Sales Executive', location: 'New York, NY',
+      employmentType: 'FULL_TIME', minSalary: 60000, maxSalary: 80000,
+      description: 'Join our dynamic sales team and drive business growth.',
+      requirements: '2+ years B2B sales experience preferred.',
+      openings: 3, status: 'PUBLISHED', publishedAt: new Date(),
+    },
+  });
+
+  await prisma.jobPosting.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000022' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000022',
+      companyId: demoCompany.id, departmentId: engineeringDept.id,
+      title: 'DevOps Engineer', location: 'San Francisco, CA',
+      employmentType: 'FULL_TIME', minSalary: 130000, maxSalary: 170000,
+      description: 'Help us build and maintain our cloud infrastructure.',
+      requirements: '3+ years experience with AWS, Docker, and Kubernetes.',
+      openings: 1, status: 'DRAFT', publishedAt: null,
+    },
+  });
+
+  // --- Job Applications (sample) ---
+  const frontendJob = await prisma.jobPosting.findFirst({
+    where: { companyId: demoCompany.id, title: 'Senior Frontend Developer' },
+  });
+  if (frontendJob) {
+    const exists = await prisma.jobApplication.findFirst({
+      where: { companyId: demoCompany.id, jobPostingId: frontendJob.id },
+    });
+    if (!exists) {
+      const app1 = await prisma.jobApplication.create({
+        data: {
+          companyId: demoCompany.id, jobPostingId: frontendJob.id,
+          candidateName: 'Jane Doe', candidateEmail: 'jane.doe@example.com',
+          candidatePhone: '+1-555-0101', status: 'NEW',
+        },
+      });
+      const app2 = await prisma.jobApplication.create({
+        data: {
+          companyId: demoCompany.id, jobPostingId: frontendJob.id,
+          candidateName: 'John Smith', candidateEmail: 'john.smith@example.com',
+          status: 'INTERVIEW',
+        },
+      });
+      // Create a sample interview
+      await prisma.interview.upsert({
+        where: { id: '00000000-0000-0000-0000-000000000030' },
+        update: {},
+        create: {
+          id: '00000000-0000-0000-0000-000000000030',
+          companyId: demoCompany.id, applicationId: app2.id,
+          title: 'Technical Interview - Frontend',
+          type: 'Technical',
+          scheduledAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          durationMinutes: 60, status: 'SCHEDULED',
+        },
+      });
+    }
+  }
+
+  // --- Assets ---
+  const assets = [
+    { name: 'MacBook Pro 16\"', type: 'LAPTOP' as const, serial: 'SN-MBP-001', brand: 'Apple' },
+    { name: 'Dell Monitor 27\"', type: 'OTHER' as const, serial: 'SN-DEL-001', brand: 'Dell' },
+    { name: 'iPhone 15 Pro', type: 'MOBILE' as const, serial: 'SN-IPH-001', brand: 'Apple' },
+    { name: 'iPad Air', type: 'TABLET' as const, serial: 'SN-IPD-001', brand: 'Apple' },
+  ];
+  const createdAssetIds: string[] = [];
+  for (const a of assets) {
+    const exists = await prisma.asset.findFirst({
+      where: { companyId: demoCompany.id, serialNumber: a.serial },
+    });
+    if (!exists) {
+      const asset = await prisma.asset.create({
+        data: {
+          companyId: demoCompany.id, name: a.name, type: a.type,
+          serialNumber: a.serial, brand: a.brand, isActive: true,
+        },
+      });
+      createdAssetIds.push(asset.id);
+    }
+  }
+
+  // --- Asset Assignments ---
+  if (createdEmployeeIds.length > 0 && createdAssetIds.length > 0) {
+    const exists = await prisma.assetAssignment.findFirst({
+      where: { companyId: demoCompany.id, assetId: createdAssetIds[0] },
+    });
+    if (!exists) {
+      await prisma.assetAssignment.create({
+        data: {
+          companyId: demoCompany.id, assetId: createdAssetIds[0],
+          employeeId: createdEmployeeIds[0], status: 'ASSIGNED',
+        },
+      });
+      await prisma.assetAssignment.create({
+        data: {
+          companyId: demoCompany.id, assetId: createdAssetIds[2],
+          employeeId: createdEmployeeIds[1], status: 'ASSIGNED',
+        },
+      });
+    }
+  }
+
+  // --- Training Programs ---
+  const trainings = [
+    { title: 'AWS Cloud Practitioner Certification', description: 'Prepare for the AWS Cloud Practitioner exam.', mode: 'ONLINE', duration: '3 days' },
+    { title: 'Leadership & Management Workshop', description: 'Develop leadership skills for team leads and managers.', mode: 'OFFLINE', duration: '2 days' },
+    { title: 'React Advanced Patterns', description: 'Deep dive into advanced React patterns and performance.', mode: 'ONLINE', duration: '1 day' },
+  ];
+  for (const t of trainings) {
+    const exists = await prisma.training.findFirst({
+      where: { companyId: demoCompany.id, title: t.title },
+    });
+    if (!exists) {
+      const training = await prisma.training.create({
+        data: {
+          companyId: demoCompany.id, title: t.title, description: t.description,
+          mode: t.mode, duration: t.duration,
+          startDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+          maxParticipants: 20, status: 'UPCOMING',
+        },
+      });
+      // Enroll the first employee
+      if (createdEmployeeIds.length > 0) {
+        await prisma.trainingEnrollment.upsert({
+          where: {
+            trainingId_employeeId: { trainingId: training.id, employeeId: createdEmployeeIds[0] },
+          },
+          update: {},
+          create: {
+            companyId: demoCompany.id, trainingId: training.id,
+            employeeId: createdEmployeeIds[0], status: 'ENROLLED',
+          },
+        });
+      }
+    }
+  }
+
+  // --- Attendance Records (today) ---
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  for (let i = 0; i < Math.min(createdEmployeeIds.length, 4); i++) {
+    const empId = createdEmployeeIds[i];
+    const exists = await prisma.attendanceRecord.findUnique({
+      where: { employeeId_date: { employeeId: empId, date: today } },
+    });
+    if (!exists) {
+      const checkIn = new Date();
+      checkIn.setUTCHours(9, 5, 0, 0);
+      const checkOut = new Date();
+      checkOut.setUTCHours(17, 45, 0, 0);
+      const workedMinutes = Math.round((checkOut.getTime() - checkIn.getTime()) / 60000);
+
+      await prisma.attendanceRecord.create({
+        data: {
+          companyId: demoCompany.id, employeeId: empId, date: today,
+          checkIn, checkOut, workedMinutes, status: 'PRESENT', source: 'WEB',
+        },
+      });
+    }
+  }
+
+  // --- Leave Balances (current year) ---
+  const leaveTypes = [annualLeave, sickLeave, personalLeave];
+  for (const empId of createdEmployeeIds) {
+    for (const lt of leaveTypes) {
+      const exists = await prisma.leaveBalance.findUnique({
+        where: {
+          employeeId_leaveTypeId_year: {
+            employeeId: empId, leaveTypeId: lt.id, year: currentYear,
+          },
+        },
+      });
+      if (!exists) {
+        await prisma.leaveBalance.create({
+          data: {
+            companyId: demoCompany.id, employeeId: empId,
+            leaveTypeId: lt.id, year: currentYear,
+            allocated: lt.daysPerYear, used: 0, carriedForward: 0,
+          },
+        });
+      }
+    }
+  }
+
+  // --- One completed leave request (approved) ---
+  if (createdEmployeeIds.length > 0) {
+    const pastStart = new Date(currentYear, 5, 10);
+    const pastEnd = new Date(currentYear, 5, 12);
+    const exists = await prisma.leaveRequest.findFirst({
+      where: { employeeId: createdEmployeeIds[0], startDate: pastStart },
+    });
+    if (!exists) {
+      await prisma.leaveRequest.create({
+        data: {
+          companyId: demoCompany.id, employeeId: createdEmployeeIds[0],
+          leaveTypeId: annualLeave.id,
+          startDate: pastStart, endDate: pastEnd, totalDays: 3,
+          reason: 'Family vacation', status: 'APPROVED',
+        },
+      });
+    }
+  }
+
+  // ====================================================================
+  // Phase 3: Additional comprehensive data for end-to-end testing
+  // ====================================================================
+  console.log('Seeding Phase 3: Additional comprehensive data...');
+
+  // --- Teams ---
+  const alphaTeam = await prisma.team.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000100' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000100',
+      companyId: demoCompany.id, departmentId: engineeringDept.id,
+      name: 'Alpha Team', isActive: true,
+    },
+  });
+
+  const betaTeam = await prisma.team.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000101' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000101',
+      companyId: demoCompany.id, departmentId: engineeringDept.id,
+      name: 'Beta Team', isActive: true,
+    },
+  });
+
+  const salesTeam = await prisma.team.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000102' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000102',
+      companyId: demoCompany.id, departmentId: salesDept.id,
+      name: 'Enterprise Sales', isActive: true,
+    },
+  });
+
+  // Assign employees to teams
+  if (createdEmployeeIds.length >= 3) {
+    await prisma.employee.update({ where: { id: createdEmployeeIds[0] }, data: { teamId: alphaTeam.id } });
+    await prisma.employee.update({ where: { id: createdEmployeeIds[1] }, data: { teamId: betaTeam.id } });
+    await prisma.employee.update({ where: { id: createdEmployeeIds[3] }, data: { teamId: salesTeam.id } });
+  }
+
+  // --- Attendance Records (past dates with varied statuses) ---
+  const attendanceStatuses = ['PRESENT', 'LATE', 'PRESENT', 'HALF_DAY', 'ABSENT', 'PRESENT', 'LATE', 'PRESENT'];
+  if (createdEmployeeIds.length > 0) {
+    for (let daysAgo = 1; daysAgo <= 14; daysAgo++) {
+      const pastDate = new Date(today);
+      pastDate.setUTCDate(pastDate.getUTCDate() - daysAgo);
+      const statusIdx = daysAgo % attendanceStatuses.length;
+      const status = attendanceStatuses[statusIdx] as any;
+
+      for (let e = 0; e < Math.min(createdEmployeeIds.length, 3); e++) {
+        const empId = createdEmployeeIds[e];
+        const exists = await prisma.attendanceRecord.findUnique({
+          where: { employeeId_date: { employeeId: empId, date: pastDate } },
+        });
+        if (!exists && status !== 'ABSENT') {
+          const hour = 8 + (daysAgo % 3);
+          const checkIn = new Date(pastDate);
+          checkIn.setUTCHours(hour, 5 + (daysAgo % 20), 0, 0);
+          const checkOut = new Date(pastDate);
+          checkOut.setUTCHours(hour + 8, 45, 0, 0);
+          const workedMinutes = Math.round((checkOut.getTime() - checkIn.getTime()) / 60000);
+
+          await prisma.attendanceRecord.create({
+            data: {
+              companyId: demoCompany.id, employeeId: empId, date: pastDate,
+              checkIn, checkOut, workedMinutes, status, source: 'WEB',
+            },
+          });
+        } else if (!exists && status === 'HALF_DAY') {
+          const checkIn = new Date(pastDate);
+          checkIn.setUTCHours(10, 0, 0, 0);
+          const checkOut = new Date(pastDate);
+          checkOut.setUTCHours(14, 0, 0, 0);
+          const workedMinutes = 240;
+          await prisma.attendanceRecord.create({
+            data: {
+              companyId: demoCompany.id, employeeId: empId, date: pastDate,
+              checkIn, checkOut, workedMinutes, status: 'HALF_DAY', source: 'WEB',
+            },
+          });
+        }
+      }
+    }
+  }
+
+  // --- Leave Requests (varied states) ---
+  if (createdEmployeeIds.length > 1) {
+    // PENDING leave request
+    const pendingExists = await prisma.leaveRequest.findFirst({
+      where: { employeeId: createdEmployeeIds[1], status: 'PENDING' },
+    });
+    if (!pendingExists) {
+      await prisma.leaveRequest.create({
+        data: {
+          companyId: demoCompany.id, employeeId: createdEmployeeIds[1],
+          leaveTypeId: annualLeave.id,
+          startDate: new Date(currentYear, 7, 15), endDate: new Date(currentYear, 7, 16),
+          totalDays: 2, reason: 'Personal errands', status: 'PENDING',
+        },
+      });
+    }
+
+    // REJECTED leave request
+    const rejectedExists = await prisma.leaveRequest.findFirst({
+      where: { employeeId: createdEmployeeIds[2], status: 'REJECTED' },
+    });
+    if (!rejectedExists) {
+      await prisma.leaveRequest.create({
+        data: {
+          companyId: demoCompany.id, employeeId: createdEmployeeIds[2],
+          leaveTypeId: personalLeave.id,
+          startDate: new Date(currentYear, 4, 5), endDate: new Date(currentYear, 4, 5),
+          totalDays: 1, reason: 'Weekend trip', status: 'REJECTED',
+          rejectionReason: 'Team understaffed during that period.',
+        },
+      });
+    }
+
+    // CANCELLED leave request
+    const cancelledExists = await prisma.leaveRequest.findFirst({
+      where: { employeeId: createdEmployeeIds[3], status: 'CANCELLED' },
+    });
+    if (!cancelledExists) {
+      await prisma.leaveRequest.create({
+        data: {
+          companyId: demoCompany.id, employeeId: createdEmployeeIds[3],
+          leaveTypeId: sickLeave.id,
+          startDate: new Date(currentYear, 2, 10), endDate: new Date(currentYear, 2, 12),
+          totalDays: 3, reason: 'Was feeling unwell but recovered', status: 'CANCELLED',
+        },
+      });
+    }
+  }
+
+  // --- Attendance Regularizations ---
+  if (createdEmployeeIds.length > 0) {
+    const threeDaysAgo = new Date(today);
+    threeDaysAgo.setUTCDate(threeDaysAgo.getUTCDate() - 3);
+
+    // PENDING regularization
+    const pendingRegExists = await prisma.attendanceRegularization.findFirst({
+      where: { employeeId: createdEmployeeIds[0], status: 'PENDING' },
+    });
+    if (!pendingRegExists) {
+      await prisma.attendanceRegularization.create({
+        data: {
+          companyId: demoCompany.id, employeeId: createdEmployeeIds[0],
+          date: threeDaysAgo, reason: 'Forgot to clock in on time due to network issues',
+          requestedCheckIn: new Date(threeDaysAgo.getTime() + 9 * 60 * 60 * 1000),
+          requestedStatus: 'PRESENT', status: 'PENDING',
+        },
+      });
+    }
+
+    // APPROVED regularization
+    const fiveDaysAgo = new Date(today);
+    fiveDaysAgo.setUTCDate(fiveDaysAgo.getUTCDate() - 5);
+    const approvedRegExists = await prisma.attendanceRegularization.findFirst({
+      where: { employeeId: createdEmployeeIds[1], status: 'APPROVED' },
+    });
+    if (!approvedRegExists) {
+      await prisma.attendanceRegularization.create({
+        data: {
+          companyId: demoCompany.id, employeeId: createdEmployeeIds[1],
+          date: fiveDaysAgo, reason: 'Had to leave early due to medical appointment',
+          requestedCheckOut: new Date(fiveDaysAgo.getTime() + 15 * 60 * 60 * 1000),
+          requestedStatus: 'PRESENT', status: 'APPROVED',
+          approvedById: createdEmployeeIds[0],
+          approvedAt: new Date(),
+        },
+      });
+    }
+
+    // REJECTED regularization
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 7);
+    const rejectedRegExists = await prisma.attendanceRegularization.findFirst({
+      where: { employeeId: createdEmployeeIds[2], status: 'REJECTED' },
+    });
+    if (!rejectedRegExists) {
+      await prisma.attendanceRegularization.create({
+        data: {
+          companyId: demoCompany.id, employeeId: createdEmployeeIds[2],
+          date: sevenDaysAgo, reason: 'Was stuck in traffic',
+          status: 'REJECTED',
+          rejectionReason: 'No GPS data to verify the claim.',
+          approvedById: createdEmployeeIds[0],
+          approvedAt: new Date(),
+        },
+      });
+    }
+  }
+
+  // --- Payroll Runs ---
+  const currentMonth = new Date().getMonth() + 1;
+  const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+  const prevMonthYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+
+  const completedRun = await prisma.payrollRun.upsert({
+    where: { companyId_month_year: { companyId: demoCompany.id, month: prevMonth, year: prevMonthYear } },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000040',
+      companyId: demoCompany.id, month: prevMonth, year: prevMonthYear,
+      status: 'COMPLETED', processedAt: new Date(),
+      totalGross: 0, totalDeductions: 0, totalNet: 0, employeeCount: 0,
+      notes: 'Regular monthly payroll',
+    },
+  });
+
+  // --- Payslips for completed run ---
+  if (createdEmployeeIds.length > 0) {
+    for (let i = 0; i < Math.min(createdEmployeeIds.length, 6); i++) {
+      const empId = createdEmployeeIds[i];
+      const es = salaryConfigs[i];
+      if (!es) continue;
+
+      const basic = es.basic;
+      const housing = es.housing;
+      const transport = es.transport;
+      const medical = es.medical;
+      const other = es.other;
+      const gross = basic + housing + transport + medical + other;
+      const tax = Math.round(gross * (es.tax / 100));
+      const pension = Math.round(gross * (es.pension / 100));
+      const insurance = es.insurance;
+      const deductions = tax + pension + insurance;
+      const net = gross - deductions;
+
+      const exists = await prisma.payslip.findFirst({
+        where: { employeeId: empId, runId: completedRun.id },
+      });
+      if (!exists) {
+        await prisma.payslip.create({
+          data: {
+            companyId: demoCompany.id, employeeId: empId, runId: completedRun.id,
+            basic, housingAllowance: housing, transportAllowance: transport,
+            medicalAllowance: medical, otherAllowances: other,
+            grossPay: gross, taxDeduction: tax, pensionDeduction: pension,
+            insuranceDeduction: insurance, loanDeduction: 0,
+            totalDeductions: deductions, netPay: Math.max(net, 0),
+            status: 'PAID', paidAt: new Date(),
+          },
+        });
+      }
+    }
+
+    // Update the run totals
+    const payslipsForRun = await prisma.payslip.findMany({ where: { runId: completedRun.id } });
+    const totalGross = payslipsForRun.reduce((sum, p) => sum + p.grossPay, 0);
+    const totalDeductions = payslipsForRun.reduce((sum, p) => sum + p.totalDeductions, 0);
+    const totalNet = payslipsForRun.reduce((sum, p) => sum + p.netPay, 0);
+    await prisma.payrollRun.update({
+      where: { id: completedRun.id },
+      data: { totalGross, totalDeductions, totalNet, employeeCount: payslipsForRun.length },
+    });
+  }
+
+  // --- Loans with Repayments ---
+  if (createdEmployeeIds.length >= 2) {
+    const loanExists = await prisma.loan.findFirst({
+      where: { employeeId: createdEmployeeIds[0] },
+    });
+    if (!loanExists) {
+      const loanAmount = 5000;
+      const interestRate = 5;
+      const totalAmount = loanAmount + (loanAmount * interestRate / 100);
+      const repaymentMonths = 6;
+      const monthlyInstallment = Math.ceil(totalAmount / repaymentMonths);
+
+      const loan1 = await prisma.loan.create({
+        data: {
+          companyId: demoCompany.id, employeeId: createdEmployeeIds[0],
+          loanType: 'PERSONAL', amount: loanAmount, totalAmount,
+          interestRate, repaymentMonths, monthlyInstallment,
+          purpose: 'Home office setup', status: 'ACTIVE',
+          approvedById: createdEmployeeIds[2],
+          approvedAt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+          disbursedAt: new Date(Date.now() - 85 * 24 * 60 * 60 * 1000),
+        },
+      });
+
+      // Create repayment schedule (6 monthly installments)
+      for (let m = 1; m <= repaymentMonths; m++) {
+        const dueDate = new Date();
+        dueDate.setMonth(dueDate.getMonth() + m - 3); // First due 3 months ago
+        const status = m <= 2 ? 'PAID' : 'PENDING';
+        await prisma.loanRepayment.create({
+          data: {
+            loanId: loan1.id,
+            amount: monthlyInstallment,
+            dueDate,
+            status,
+            paidAt: status === 'PAID' ? new Date() : null,
+          },
+        });
+      }
+    }
+
+    // A PENDING loan for another employee
+    const pendingLoanExists = await prisma.loan.findFirst({
+      where: { employeeId: createdEmployeeIds[1], status: 'PENDING' },
+    });
+    if (!pendingLoanExists) {
+      await prisma.loan.create({
+        data: {
+          companyId: demoCompany.id, employeeId: createdEmployeeIds[1],
+          loanType: 'ADVANCE', amount: 2000, totalAmount: 2000,
+          interestRate: 0, repaymentMonths: 3, monthlyInstallment: 667,
+          purpose: 'Travel advance', status: 'PENDING',
+        },
+      });
+    }
+  }
+
+  // --- Employee Documents ---
+  if (createdEmployeeIds.length > 0) {
+    const docExists = await prisma.employeeDocument.findFirst({
+      where: { employeeId: createdEmployeeIds[0] },
+    });
+    if (!docExists) {
+      await prisma.employeeDocument.create({
+        data: {
+          companyId: demoCompany.id, employeeId: createdEmployeeIds[0],
+          name: 'Employment Contract.pdf', category: 'CONTRACT',
+          fileUrl: '/uploads/contract-alice.pdf',
+          fileSize: 245760, mimeType: 'application/pdf',
+          notes: 'Signed employment agreement',
+        },
+      });
+      await prisma.employeeDocument.create({
+        data: {
+          companyId: demoCompany.id, employeeId: createdEmployeeIds[1],
+          name: 'Degree Certificate.pdf', category: 'EDUCATION',
+          fileUrl: '/uploads/degree-bob.pdf',
+          fileSize: 512000, mimeType: 'application/pdf',
+          notes: 'B.Tech Computer Science',
+        },
+      });
+    }
+  }
+
+  // --- Tax Declarations ---
+  if (createdEmployeeIds.length > 0) {
+    const taxYear = `${currentYear}-${(currentYear + 1).toString().slice(2)}`;
+    const taxExists = await prisma.taxDeclaration.findFirst({
+      where: { employeeId: createdEmployeeIds[0] },
+    });
+    if (!taxExists) {
+      await prisma.taxDeclaration.create({
+        data: {
+          companyId: demoCompany.id, employeeId: createdEmployeeIds[0],
+          financialYear: taxYear, panNumber: 'ABCDE1234F',
+          declarations: {
+            hra: 120000, '80c': 150000, '80d': 25000,
+            nps: 50000, homeLoan: 0,
+          },
+          totalIncome: 750000, totalDeductions: 345000, totalTaxPaid: 45000,
+          status: 'SUBMITTED', submittedAt: new Date(),
+        },
+      });
+    }
+  }
+
+  // --- Attendance Security Config ---
+  const securityConfigExists = await prisma.attendanceSecurityConfig.findFirst({
+    where: { companyId: demoCompany.id },
+  });
+  if (!securityConfigExists) {
+    await prisma.attendanceSecurityConfig.create({
+      data: {
+        companyId: demoCompany.id,
+        requireTrustedDevice: false,
+        requireWifiVerification: false,
+        requireIpValidation: false,
+        strictMode: false,
+      },
+    });
+  }
+
+  // --- Indian Statutory Compliance Config (Company-level) ---
+  const complianceConfigExists = await prisma.complianceConfig.findFirst({
+    where: { companyId: demoCompany.id },
+  });
+  if (!complianceConfigExists) {
+    await prisma.complianceConfig.create({
+      data: {
+        companyId: demoCompany.id,
+        enablePf: true,
+        pfWageCeiling: 15000,
+        pfEmployeePct: 12,
+        pfEmployerPct: 13,
+        enableEsi: true,
+        esiWageCeiling: 21000,
+        esiEmployeePct: 0.75,
+        esiEmployerPct: 3.25,
+        enablePt: true,
+        ptState: 'KARNATAKA',
+        enableTds: true,
+        tdsRegime: 'NEW',
+      },
+    });
+  }
+
+  // --- Company Branding ---
+  const brandingExists = await prisma.companyBranding.findFirst({
+    where: { companyId: demoCompany.id },
+  });
+  if (!brandingExists) {
+    await prisma.companyBranding.create({
+      data: {
+        companyId: demoCompany.id,
+        primaryColor: '#0B6E63',
+        secondaryColor: '#10192B',
+        accentColor: '#4DB6A8',
+        companyName: 'Demo Company',
+        enabled: false,
+      },
+    });
+  }
+
   console.log('---------------------------------------------');
   console.log('Seed complete.');
   console.log(`Super Admin:    ${superAdminEmail} / ${superAdminPassword}`);
   console.log(`Demo HR:        ${demoHrEmail} / ${demoHrPassword}`);
   console.log(`Demo company:   ${demoCompany.slug}`);
+  console.log(`Additional employees created: ${createdEmployeeIds.length}`);
   console.log('---------------------------------------------');
+  console.log('');
+  console.log('--- Users & Roles for E2E Testing ---');
+  console.log('superadmin@hrms.io / ChangeMe123! (Platform Super Admin - no company)');
+  console.log('hr@demo.com / Demo123! (HR Manager - demo-company)');
+  console.log('alice@demo.com / Demo123! (Employee - Engineering)');
+  console.log('bob@demo.com / Demo123! (Employee - Engineering)');
+  console.log('carol@demo.com / Demo123! (Department Head - Engineering)');
+  console.log('david@demo.com / Demo123! (Employee - Sales)');
+  console.log('eve@demo.com / Demo123! (Employee - Marketing)');
+  console.log('frank@demo.com / Demo123! (Department Head - Sales)');
+  console.log('grace@demo.com / Demo123! (Payroll Manager - HR)');
+  console.log('henry@demo.com / Demo123! (Recruiter - HR)');
+  console.log('');
+  console.log('--- Key Data ---');
+  console.log(`Completed payroll run: Month ${prevMonth}/${prevMonthYear}`);
+  console.log(`Active loan for Alice with repayments`);
+  console.log(`14 days of varied attendance records`);
+  console.log(`Leave requests in PENDING, APPROVED, REJECTED, CANCELLED states`);
+  console.log(`Attendance regularizations in PENDING, APPROVED, REJECTED states`);
+  console.log('---------------------------------------------');
+
+  // Store IDs for use by external processes if needed
+  (global as any).__seedIds = {
+    companyId: demoCompany.id,
+    employeeIds: createdEmployeeIds,
+    completedRunId: completedRun ? completedRun.id : null,
+  };
 }
 
 main()

@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { clsx } from 'clsx';
+import { api, unwrap } from '@/lib/api-client';
 import {
   LayoutDashboard, Users, Clock, CalendarDays, Timer, Sun,
   MapPin, Shield, Building2, DollarSign, Briefcase, BarChart3,
@@ -62,14 +64,14 @@ const ADMIN_ITEMS = [
 
 interface SectionProps {
   title: string;
-  items: { href: string; label: string; icon: React.ComponentType<{ size?: number; strokeWidth?: number }> }[];
+  items: { href: string; label: string; icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }> }[];
   pathname: string | null;
 }
 
 function NavSection({ title, items, pathname }: SectionProps) {
   return (
     <div className="pb-1">
-      <p className="px-3 pb-1 pt-4 text-xs font-medium uppercase tracking-wider text-white/30">
+      <p className="px-3 pb-1.5 pt-4 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
         {title}
       </p>
       {items.map(({ href, label, icon: Icon }) => {
@@ -79,13 +81,24 @@ function NavSection({ title, items, pathname }: SectionProps) {
             key={href}
             href={href}
             className={clsx(
-              'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+              'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150',
               active
-                ? 'bg-white/10 text-white'
-                : 'text-white/60 hover:bg-white/5 hover:text-white',
+                ? 'bg-accent/10 text-accent font-semibold'
+                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
             )}
           >
-            <Icon size={16} strokeWidth={2} />
+            {/* Active indicator bar */}
+            {active && (
+              <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-accent" />
+            )}
+            <Icon
+              size={16}
+              strokeWidth={active ? 2.2 : 1.8}
+              className={clsx(
+                'transition-all duration-150',
+                active ? 'text-accent' : 'text-gray-400 group-hover:text-gray-600',
+              )}
+            />
             <span className="truncate">{label}</span>
           </Link>
         );
@@ -97,30 +110,57 @@ function NavSection({ title, items, pathname }: SectionProps) {
 export function Sidebar() {
   const pathname = usePathname();
 
+  const { data: profile } = useQuery<{ firstName: string; lastName: string }>({
+    queryKey: ['me', 'profile'],
+    queryFn: () => unwrap(api.get('/me/profile')),
+    retry: false,
+  });
+
+  const initials = profile ? `${profile.firstName?.[0] || ''}${profile.lastName?.[0] || ''}`.toUpperCase() : 'U';
+  const fullName = profile ? `${profile.firstName} ${profile.lastName}` : 'User';
+
   return (
-    <aside className="flex h-screen w-60 flex-col bg-ink text-white">
-      {/* Header — always visible */}
-      <div className="flex-shrink-0 px-6 py-5">
-        <p className="font-serif text-xl font-semibold tracking-tight">HRMS</p>
-        <p className="mt-0.5 text-xs text-white/50">Personnel Records</p>
+    <aside className="flex h-full w-60 flex-col border-r border-gray-200 bg-white text-gray-900">
+      {/* Header */}
+      <div className="flex-shrink-0 px-5 py-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent">
+            <span className="text-sm font-bold text-white">H</span>
+          </div>
+          <div>
+            <p className="text-sm font-semibold tracking-tight leading-none text-gray-900">HRMS</p>
+            <p className="mt-0.5 text-[10px] text-gray-400">Enterprise Platform</p>
+          </div>
+        </div>
       </div>
 
+      {/* Divider */}
+      <div className="mx-4 border-t border-gray-100" />
+
       {/* Scrollable nav area */}
-      <nav className="sidebar-scroll flex-1 overflow-y-auto px-3">
+      <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 py-2">
         <NavSection title="Employee Self-Service" items={ESS_ITEMS} pathname={pathname} />
-        <div className="mx-3 border-t border-white/5" />
+        <div className="mx-3 my-1 border-t border-gray-100" />
         <NavSection title="Management" items={NAV_ITEMS} pathname={pathname} />
-        <div className="mx-3 border-t border-white/5" />
+        <div className="mx-3 my-1 border-t border-gray-100" />
         <NavSection title="Recruitment" items={RECRUITMENT_ITEMS} pathname={pathname} />
-        <div className="mx-3 border-t border-white/5" />
+        <div className="mx-3 my-1 border-t border-gray-100" />
         <NavSection title="Payroll" items={PAYROLL_ITEMS} pathname={pathname} />
-        <div className="mx-3 border-t border-white/5" />
+        <div className="mx-3 my-1 border-t border-gray-100" />
         <NavSection title="Administration" items={ADMIN_ITEMS} pathname={pathname} />
       </nav>
 
-      {/* Footer — always visible at bottom */}
-      <div className="flex-shrink-0 border-t border-white/10 px-6 py-3 text-xs text-white/40">
-        Enterprise HRMS · Phase 1–9
+      {/* Footer */}
+      <div className="flex-shrink-0 border-t border-gray-100 px-4 py-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-accent/10">
+            <span className="text-xs font-semibold text-accent">{initials}</span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-medium text-gray-900">{fullName}</p>
+            <p className="text-[10px] text-gray-400">HRMS · v1.0</p>
+          </div>
+        </div>
       </div>
     </aside>
   );

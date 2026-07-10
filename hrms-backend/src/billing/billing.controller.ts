@@ -14,7 +14,6 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { SystemRole } from '../common/enums/role.enum';
 
 @ApiTags('Billing')
-@ApiBearerAuth()
 @Controller('billing')
 export class BillingController {
   constructor(private readonly billingService: BillingService) {}
@@ -24,6 +23,7 @@ export class BillingController {
   // ======================================================================
 
   @Get('subscription')
+  @ApiBearerAuth()
   @UseGuards(PermissionsGuard)
   @Permissions('company.read')
   getSubscription(@TenantId() companyId: string) {
@@ -31,6 +31,7 @@ export class BillingController {
   }
 
   @Patch('subscription')
+  @ApiBearerAuth()
   @UseGuards(PermissionsGuard)
   @Permissions('company.update')
   updateSubscription(@TenantId() companyId: string, @Body() dto: UpdateCompanySubscriptionDto) {
@@ -38,11 +39,13 @@ export class BillingController {
   }
 
   @Get('plans')
+  @ApiBearerAuth()
   findAllPlans() {
     return this.billingService.findAllPlans();
   }
 
   @Get('invoices')
+  @ApiBearerAuth()
   @UseGuards(PermissionsGuard)
   @Permissions('company.read')
   getInvoices(@TenantId() companyId: string) {
@@ -50,6 +53,7 @@ export class BillingController {
   }
 
   @Get('trial')
+  @ApiBearerAuth()
   @UseGuards(PermissionsGuard)
   @Permissions('company.read')
   checkTrial(@TenantId() companyId: string) {
@@ -57,6 +61,7 @@ export class BillingController {
   }
 
   @Get('limits')
+  @ApiBearerAuth()
   @UseGuards(PermissionsGuard)
   @Permissions('company.read')
   checkLimits(@TenantId() companyId: string) {
@@ -64,6 +69,7 @@ export class BillingController {
   }
 
   @Get('features')
+  @ApiBearerAuth()
   @UseGuards(PermissionsGuard)
   @Permissions('company.read')
   getFeatures(@TenantId() companyId: string) {
@@ -71,6 +77,7 @@ export class BillingController {
   }
 
   @Get('branding')
+  @ApiBearerAuth()
   @UseGuards(PermissionsGuard)
   @Permissions('company.read')
   getBranding(@TenantId() companyId: string) {
@@ -78,6 +85,7 @@ export class BillingController {
   }
 
   @Patch('branding')
+  @ApiBearerAuth()
   @UseGuards(PermissionsGuard)
   @Permissions('company.update')
   updateBranding(@TenantId() companyId: string, @Body() dto: UpdateCompanyBrandingDto) {
@@ -89,6 +97,7 @@ export class BillingController {
   // ======================================================================
 
   @Post('plans')
+  @ApiBearerAuth()
   @UseGuards(RolesGuard)
   @Roles(SystemRole.SUPER_ADMIN)
   createPlan(@Body() dto: CreateBillingPlanDto) {
@@ -96,6 +105,7 @@ export class BillingController {
   }
 
   @Patch('plans/:id')
+  @ApiBearerAuth()
   @UseGuards(RolesGuard)
   @Roles(SystemRole.SUPER_ADMIN)
   updatePlan(@Param('id') id: string, @Body() dto: UpdateBillingPlanDto) {
@@ -103,6 +113,7 @@ export class BillingController {
   }
 
   @Delete('plans/:id')
+  @ApiBearerAuth()
   @UseGuards(RolesGuard)
   @Roles(SystemRole.SUPER_ADMIN)
   removePlan(@Param('id') id: string) {
@@ -110,6 +121,7 @@ export class BillingController {
   }
 
   @Post('feature-flags')
+  @ApiBearerAuth()
   @UseGuards(RolesGuard)
   @Roles(SystemRole.SUPER_ADMIN)
   createFeatureFlag(@Body() dto: CreateFeatureFlagDto) {
@@ -117,11 +129,13 @@ export class BillingController {
   }
 
   @Get('feature-flags')
+  @ApiBearerAuth()
   findAllFeatureFlags() {
     return this.billingService.findAllFeatureFlags();
   }
 
   @Post('feature-flags/:id/toggle')
+  @ApiBearerAuth()
   @UseGuards(PermissionsGuard)
   @Permissions('company.update')
   toggleFeatureFlag(

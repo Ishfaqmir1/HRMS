@@ -55,7 +55,7 @@ export default function JobPostingsPage() {
         <Button onClick={openCreate}><Plus size={14} /> New Job</Button>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {['', 'PUBLISHED', 'DRAFT', 'CLOSED', 'ON_HOLD'].map(s => (
           <Button key={s} variant={statusFilter === s ? 'default' : 'outline'} size="sm" onClick={() => { setStatusFilter(s); setPage(1); }}>
             {s || 'All'}

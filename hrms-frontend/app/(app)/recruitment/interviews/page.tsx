@@ -61,9 +61,8 @@ export default function InterviewsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="ledger-tab font-serif text-2xl font-semibold text-ink">Interviews</h1>
+    <div className="mx-auto max-w-6xl space-y-6">            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <h1 className="ledger-tab font-serif text-2xl font-semibold text-ink">Interviews</h1>
         <Button onClick={openSchedule}><CalendarCheck size={14} /> Schedule</Button>
       </div>
 

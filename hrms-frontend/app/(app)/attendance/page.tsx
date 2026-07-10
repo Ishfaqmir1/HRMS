@@ -242,8 +242,8 @@ export default function AttendancePage() {
                 <p className="text-sm text-ink-faint">Loading...</p>
               ) : (
                 <>
-                  <div className="flex items-center justify-between">
-                    <div className="flex gap-8 text-sm text-ink-soft">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-wrap gap-6 text-sm text-ink-soft">
                       <div>
                         <p className="text-xs text-ink-faint">Clock in</p>
                         <p className="font-serif text-lg font-semibold text-ink">{formatTime(today?.checkIn ?? null)}</p>
@@ -317,6 +317,7 @@ export default function AttendancePage() {
             <CardContent>
               {historyLoading && <p className="text-sm text-ink-faint">Loading history…</p>}
               {history && (
+                <div className="table-responsive">
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-border text-xs uppercase tracking-wide text-ink-faint">
@@ -355,6 +356,7 @@ export default function AttendancePage() {
                     )}
                   </tbody>
                 </table>
+                </div>
               )}
             </CardContent>
           </Card>

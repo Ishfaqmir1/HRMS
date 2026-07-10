@@ -1,7 +1,7 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AnalyticsService } from './analytics.service';
-import { TenantId } from '../common/decorators/tenant.decorator';
+import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { Permissions } from '../common/decorators/permissions.decorator';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 
@@ -14,7 +14,10 @@ export class AnalyticsController {
 
   @Get('dashboard')
   @Permissions('employee.read')
-  getDashboard(@TenantId() companyId: string) {
-    return this.analyticsService.getDashboard(companyId);
+  getDashboard(@CurrentUser() user: AuthenticatedUser) {
+    // Use user.companyId instead of @TenantId() so super admin
+    // (who has companyId: null) can still access empty analytics.
+    // The service handles null/empty companyId by returning empty data.
+    return this.analyticsService.getDashboard(user.companyId ?? '');
   }
 }

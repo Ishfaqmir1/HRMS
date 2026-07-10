@@ -75,35 +75,28 @@ export default function BillingPage() {
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [showPlanPicker, setShowPlanPicker] = useState(false);
 
-  const { data: subscription, isLoading: subLoading } = useQuery({
-    queryKey: ['billing', 'subscription'],
-    queryFn: () => unwrap<Subscription>(api.get('/billing/subscription')),
+  // Consolidate 6 separate API calls into 1 to reduce page load time
+  const { data: allData, isLoading: subLoading } = useQuery({
+    queryKey: ['billing', 'all'],
+    queryFn: async () => {
+      const [subscription, plans, invoices, features, branding, trial] = await Promise.all([
+        unwrap<Subscription>(api.get('/billing/subscription')).catch(() => null),
+        unwrap<BillingPlan[]>(api.get('/billing/plans')).catch(() => []),
+        unwrap<Invoice[]>(api.get('/billing/invoices')).catch(() => []),
+        unwrap<FeatureFlag[]>(api.get('/billing/features')).catch(() => []),
+        unwrap<any>(api.get('/billing/branding')).catch(() => null),
+        unwrap<any>(api.get('/billing/trial')).catch(() => null),
+      ]);
+      return { subscription, plans, invoices, features, branding, trial };
+    },
   });
 
-  const { data: plans } = useQuery({
-    queryKey: ['billing', 'plans'],
-    queryFn: () => unwrap<BillingPlan[]>(api.get('/billing/plans')),
-  });
-
-  const { data: invoices } = useQuery({
-    queryKey: ['billing', 'invoices'],
-    queryFn: () => unwrap<Invoice[]>(api.get('/billing/invoices')),
-  });
-
-  const { data: features } = useQuery({
-    queryKey: ['billing', 'features'],
-    queryFn: () => unwrap<FeatureFlag[]>(api.get('/billing/features')),
-  });
-
-  const { data: branding } = useQuery({
-    queryKey: ['billing', 'branding'],
-    queryFn: () => unwrap<any>(api.get('/billing/branding')),
-  });
-
-  const { data: trial } = useQuery({
-    queryKey: ['billing', 'trial'],
-    queryFn: () => unwrap<any>(api.get('/billing/trial')),
-  });
+  const subscription = allData?.subscription;
+  const plans = allData?.plans;
+  const invoices = allData?.invoices;
+  const features = allData?.features;
+  const branding = allData?.branding;
+  const trial = allData?.trial;
 
   const updateSubMut = useMutation({
     mutationFn: (billingPlanId: string) => api.patch('/billing/subscription', { billingPlanId, billingCycle: 'MONTHLY' }),
@@ -112,7 +105,7 @@ export default function BillingPage() {
 
   const toggleFlagMut = useMutation({
     mutationFn: ({ id, isEnabled }: { id: string; isEnabled: boolean }) => api.post(`/billing/feature-flags/${id}/toggle`, { isEnabled }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['billing', 'features'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['billing'] }),
   });
 
   if (subLoading) return <p className="text-sm text-ink-faint">Loading billing info…</p>;

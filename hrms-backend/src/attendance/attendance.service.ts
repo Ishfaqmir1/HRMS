@@ -17,6 +17,12 @@ function startOfDay(date: Date): Date {
   return d;
 }
 
+function startOfNextDay(date: Date): Date {
+  const d = startOfDay(date);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d;
+}
+
 @Injectable()
 export class AttendanceService {
   constructor(
@@ -277,7 +283,7 @@ export class AttendanceService {
       ...((filters.from || filters.to) && {
         date: {
           ...(filters.from && { gte: startOfDay(new Date(filters.from)) }),
-          ...(filters.to && { lte: startOfDay(new Date(filters.to)) }),
+          ...(filters.to && { lt: startOfNextDay(new Date(filters.to)) }),
         },
       }),
     };

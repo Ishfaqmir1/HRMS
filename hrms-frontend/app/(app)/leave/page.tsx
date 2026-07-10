@@ -165,6 +165,7 @@ export default function LeavePage() {
             <CardTitle>Approvals</CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="table-responsive">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-xs uppercase tracking-wide text-ink-faint">
@@ -217,6 +218,7 @@ export default function LeavePage() {
                 )}
               </tbody>
             </table>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -228,6 +230,7 @@ export default function LeavePage() {
         <CardContent>
           {isLoading && <p className="text-sm text-ink-faint">Loading requests…</p>}
           {requests && (
+            <div className="table-responsive">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-xs uppercase tracking-wide text-ink-faint">
@@ -267,6 +270,7 @@ export default function LeavePage() {
                 )}
               </tbody>
             </table>
+            </div>
           )}
         </CardContent>
       </Card>

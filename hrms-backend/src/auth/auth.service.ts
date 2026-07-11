@@ -1,5 +1,7 @@
 import {
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   UnauthorizedException,
@@ -9,6 +11,8 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { LoginSecurityService } from '../common/services/login-security.service';
+import { AuditService } from '../common/services/audit.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 
@@ -26,6 +30,8 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private loginSecurity: LoginSecurityService,
+    private auditService: AuditService,
   ) {}
 
   /**
@@ -85,6 +91,7 @@ export class AuthService {
         },
       });
 
+      // Audit: company registration
       await tx.auditLog.create({
         data: {
           companyId: company.id,
@@ -107,10 +114,22 @@ export class AuthService {
   }
 
   /**
-   * Authenticates a user. Tenant users must supply companySlug (email is only
-   * unique per-company); the platform Super Admin logs in without one.
+   * Authenticates a user with login security: failed attempt tracking,
+   * temp lockout, and audit logging.
    */
   async login(dto: LoginDto, meta?: { ipAddress?: string; userAgent?: string }) {
+    const normalizedEmail = dto.email.toLowerCase();
+
+    // ─── Check account lockout ───────────────────────────────────────
+    const isLocked = await this.loginSecurity.isLocked(normalizedEmail);
+    if (isLocked) {
+      const remaining = await this.loginSecurity.getRemainingLockoutMinutes(normalizedEmail);
+      throw new HttpException(
+        `Account temporarily locked due to too many failed attempts. Try again in ${remaining} minute(s).`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
     let companyId: string | null = null;
 
     if (dto.companySlug) {
@@ -122,15 +141,40 @@ export class AuthService {
     }
 
     const user = await this.prisma.user.findFirst({
-      where: { companyId, email: dto.email.toLowerCase(), deletedAt: null },
+      where: { companyId, email: normalizedEmail, deletedAt: null },
     });
 
     if (!user) {
+      // Record failed attempt even for non-existent users (prevents email enumeration)
+      await this.loginSecurity.recordFailedAttempt(normalizedEmail);
       throw new UnauthorizedException('Invalid credentials.');
     }
 
     const passwordMatches = await bcrypt.compare(dto.password, user.passwordHash);
     if (!passwordMatches) {
+      // Record failed attempt
+      const { remainingAttempts, locked } = await this.loginSecurity.recordFailedAttempt(normalizedEmail);
+
+      // Audit: failed login
+      await this.auditService.log(
+        { userId: user.id, companyId: user.companyId, email: normalizedEmail } as any,
+        {
+          action: 'LOGIN_FAILED',
+          entityType: 'User',
+          entityId: user.id,
+          metadata: { remainingAttempts, locked, ipAddress: meta?.ipAddress },
+          ipAddress: meta?.ipAddress,
+          userAgent: meta?.userAgent,
+        },
+      );
+
+      if (locked) {
+        throw new HttpException(
+          `Account locked due to too many failed attempts. Try again in ${this.configService.get<number>('loginSecurity.lockoutDurationMinutes')} minute(s).`,
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+
       throw new UnauthorizedException('Invalid credentials.');
     }
 
@@ -138,20 +182,24 @@ export class AuthService {
       throw new UnauthorizedException(`Account is ${user.status.toLowerCase()}.`);
     }
 
+    // ─── Login successful: reset attempts, update lastLogin, audit ──
+    await this.loginSecurity.resetAttempts(normalizedEmail);
+
     await this.prisma.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
 
-    await this.prisma.auditLog.create({
-      data: {
-        companyId: user.companyId,
-        userId: user.id,
+    await this.auditService.log(
+      { userId: user.id, companyId: user.companyId, email: normalizedEmail } as any,
+      {
         action: 'USER_LOGIN',
+        entityType: 'User',
+        entityId: user.id,
         ipAddress: meta?.ipAddress,
         userAgent: meta?.userAgent,
       },
-    });
+    );
 
     const tokens = await this.issueTokenPair(user.id, user.email, user.companyId, meta);
     return { user: { id: user.id, email: user.email, companyId: user.companyId }, ...tokens };
@@ -205,6 +253,49 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
     return { message: 'Logged out from all devices.' };
+  }
+
+  /**
+   * Returns the authenticated user's core context: userId, email, companyId,
+   * employeeId, roles, and permissions. Used by the frontend AuthProvider
+   * to initialize its permission-aware state without decoding the JWT locally.
+   */
+  async getMe(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        employee: { select: { id: true } },
+        userRoles: {
+          include: {
+            role: {
+              include: {
+                rolePermissions: { include: { permission: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found.');
+    }
+
+    const roles = user.userRoles.map((ur) => ur.role.slug);
+    const permissions = Array.from(
+      new Set(
+        user.userRoles.flatMap((ur) => ur.role.rolePermissions.map((rp) => rp.permission.code)),
+      ),
+    );
+
+    return {
+      userId: user.id,
+      email: user.email,
+      companyId: user.companyId,
+      employeeId: user.employee?.id ?? null,
+      roles,
+      permissions,
+    };
   }
 
   private async issueTokenPair(

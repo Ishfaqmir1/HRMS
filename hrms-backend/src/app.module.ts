@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
@@ -6,8 +6,13 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 
 import configuration from './config/configuration';
 import { PrismaModule } from './prisma/prisma.module';
-
 import { AuthModule } from './auth/auth.module';
+import { CommonModule } from './common/common.module';
+
+import { AuthController } from './auth/auth.controller';
+import { HealthController } from './health/health.controller';
+import { BillingController } from './billing/billing.controller';
+
 import { CompaniesModule } from './companies/companies.module';
 import { BranchesModule } from './branches/branches.module';
 import { DepartmentsModule } from './departments/departments.module';
@@ -31,9 +36,15 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { BillingModule } from './billing/billing.module';
 import { AttendanceSecurityModule } from './attendance-security/attendance-security.module';
 import { AttendanceRegularizationModule } from './attendance-regularization/attendance-regularization.module';
+import { AttendancePolicyModule } from './attendance-policy/attendance-policy.module';
 import { StatutoryComplianceModule } from './statutory-compliance/statutory-compliance.module';
 
+import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
+import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
+
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { SessionValidationGuard } from './common/guards/session-validation.guard';
+import { CompanyStatusGuard } from './common/guards/company-status.guard';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 
@@ -52,8 +63,8 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     EventEmitterModule.forRoot(),
     PrismaModule,
     RedisCacheModule,
+    CommonModule,
 
-    // Phase 1: Foundation
     AuthModule,
     CompaniesModule,
     BranchesModule,
@@ -61,50 +72,56 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     EmployeesModule,
     RolesModule,
     HealthModule,
-
-    // Phase 2: Core HR
     ShiftsModule,
     HolidaysModule,
     AttendanceModule,
     LeaveModule,
     EssModule,
-
-    // Geo-fencing
     GeoFenceModule,
-
-    // Phase 3: Payroll
     PayrollModule,
-
-    // Phase 4: Recruitment / ATS
     RecruitmentModule,
-
-    // Phase 5: Employee Self-Service
     DocumentsModule,
     TaxDeclarationsModule,
     AssetsModule,
     TrainingModule,
-
-    // Phase 6: Analytics & Dashboards
     AnalyticsModule,
-
-    // Phase 7: SaaS Billing
     BillingModule,
-
-    // Phase 8: Attendance Security (16 layers)
+    AttendancePolicyModule,
     AttendanceSecurityModule,
-
-    // Phase 9: Attendance Regularization
     AttendanceRegularizationModule,
-
-    // Phase 10: Indian Statutory Compliance (PF, ESI, PT, TDS)
     StatutoryComplianceModule,
   ],
   providers: [
-    // Order matters: auth first, then throttling, exception handling, response shaping.
-    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    // ──────────────────────────────────────────────────────────────────
+    // Global Guards — execution order (first = outermost)
+    // ──────────────────────────────────────────────────────────────────
+
+    // 1. Rate limiting (before auth — no point authenticating a rate-limited request)
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+
+    // 2. JWT authentication (validates token, attaches user to request)
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+
+    // 3. Session validation (user not deleted/disabled, mustChangePassword check)
+    { provide: APP_GUARD, useClass: SessionValidationGuard },
+
+    // 4. Company status validation (company active, trial not expired, not suspended)
+    { provide: APP_GUARD, useClass: CompanyStatusGuard },
+
+    // ──────────────────────────────────────────────────────────────────
+    // Global pipes, filters, interceptors
+    // ──────────────────────────────────────────────────────────────────
+
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
     { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    // Middleware runs before guards — outermost first
+    consumer
+      .apply(RequestIdMiddleware, RequestLoggerMiddleware)
+      .exclude({ path: 'health', method: RequestMethod.GET })
+      .forRoutes('*');
+  }
+}

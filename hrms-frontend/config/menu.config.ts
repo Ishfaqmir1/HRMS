@@ -1,0 +1,386 @@
+import {
+  LayoutDashboard, Users, Clock, CalendarDays, Timer, Sun,
+  MapPin, Shield, Building2, DollarSign, Briefcase, BarChart3,
+  Smartphone, FileText, Handshake, GraduationCap, UserCheck,
+  Banknote, Receipt, Home, UserCircle, FileWarning,
+  type LucideIcon,
+} from 'lucide-react';
+
+// ──────────────────────────────────────────────────────────────────
+// Types
+// ──────────────────────────────────────────────────────────────────
+
+export interface MenuItem {
+  /** Route path */
+  href: string;
+  /** Display label */
+  label: string;
+  /** Lucide icon component */
+  icon: LucideIcon;
+  /** Required permission to see this item. If multiple, ANY match is sufficient. */
+  permissions?: string[];
+  /** Required role slug(s). If multiple, ANY match is sufficient. */
+  roles?: string[];
+  /** Required feature flag code. User won't see it if feature is disabled. */
+  feature?: string;
+  /** Sub-items (for nested menus) */
+  children?: MenuItem[];
+  /** If true, only visible to super-admin */
+  superAdminOnly?: boolean;
+  /** Show on mobile bottom nav */
+  showOnMobile?: boolean;
+}
+
+export interface MenuSection {
+  /** Section title displayed in the sidebar */
+  title: string;
+  /** Items in this section */
+  items: MenuItem[];
+  /** Optional: section-level permission requirement */
+  permissions?: string[];
+  /** Optional: section-level role requirement */
+  roles?: string[];
+  /** Optional: section-level feature flag requirement */
+  feature?: string;
+  /** Only visible to super admin */
+  superAdminOnly?: boolean;
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Menu Configuration
+//
+// Each item/section declares what permission, role, or feature flag
+// is required for the user to see it. If a user doesn't have the
+// required access, the item is filtered out.
+// ──────────────────────────────────────────────────────────────────
+
+export const MENU_CONFIG: MenuSection[] = [
+  // ── Employee Self-Service ──────────────────────────────────
+  {
+    title: 'Employee Self-Service',
+    items: [
+      {
+        href: '/ess',
+        label: 'ESS Portal',
+        icon: UserCircle,
+        permissions: ['employee.read'],
+        showOnMobile: true,
+      },
+      {
+        href: '/ess/profile',
+        label: 'My Profile',
+        icon: UserCheck,
+        permissions: ['employee.read'],
+      },
+      {
+        href: '/ess/attendance',
+        label: 'Attendance Calendar',
+        icon: Clock,
+        permissions: ['attendance.read'],
+      },
+      {
+        href: '/ess/attendance/regularization',
+        label: 'Regularization',
+        icon: FileWarning,
+        permissions: ['attendance.create'],
+      },
+      {
+        href: '/ess/leave',
+        label: 'Leave History',
+        icon: CalendarDays,
+        permissions: ['leave.read'],
+      },
+      {
+        href: '/ess/payslips',
+        label: 'Payslips',
+        icon: Receipt,
+        permissions: ['payroll.read'],
+        feature: 'payroll',
+      },
+      {
+        href: '/ess/tax-declarations',
+        label: 'Tax Declarations',
+        icon: FileWarning,
+        permissions: ['employee.read'],
+        feature: 'payroll',
+      },
+      {
+        href: '/ess/expenses',
+        label: 'Expense Claims',
+        icon: DollarSign,
+        permissions: ['payroll.create'],
+        feature: 'payroll',
+      },
+      {
+        href: '/ess/documents',
+        label: 'Documents',
+        icon: FileText,
+        permissions: ['employee.read'],
+      },
+      {
+        href: '/ess/assets',
+        label: 'Assets',
+        icon: Briefcase,
+        permissions: ['employee.read'],
+        feature: 'assets',
+      },
+      {
+        href: '/ess/training',
+        label: 'Training',
+        icon: GraduationCap,
+        permissions: ['employee.read'],
+        feature: 'training',
+      },
+      {
+        href: '/ess/devices',
+        label: 'My Devices',
+        icon: Smartphone,
+        permissions: ['attendance.read'],
+      },
+    ],
+  },
+
+  // ── Management ─────────────────────────────────────────────
+  {
+    title: 'Management',
+    items: [
+      {
+        href: '/dashboard',
+        label: 'Dashboard',
+        icon: LayoutDashboard,
+        permissions: ['employee.read'],
+        showOnMobile: true,
+      },
+      {
+        href: '/analytics',
+        label: 'Analytics',
+        icon: BarChart3,
+        permissions: ['employee.read'],
+      },
+      {
+        href: '/employees',
+        label: 'Employees',
+        icon: Users,
+        permissions: ['employee.read'],
+        showOnMobile: true,
+      },
+      {
+        href: '/attendance',
+        label: 'Attendance',
+        icon: Clock,
+        permissions: ['attendance.read'],
+        showOnMobile: true,
+      },
+      {
+        href: '/attendance/regularization',
+        label: 'Regularization',
+        icon: FileWarning,
+        permissions: ['attendance.approve'],
+      },
+      {
+        href: '/leave',
+        label: 'Leave',
+        icon: CalendarDays,
+        permissions: ['leave.read'],
+        showOnMobile: true,
+      },
+    ],
+  },
+
+  // ── Recruitment / ATS ──────────────────────────────────────
+  {
+    title: 'Recruitment',
+    feature: 'recruitment',
+    items: [
+      {
+        href: '/recruitment',
+        label: 'Dashboard',
+        icon: Briefcase,
+        permissions: ['recruitment.read'],
+      },
+      {
+        href: '/recruitment/jobs',
+        label: 'Job Postings',
+        icon: Briefcase,
+        permissions: ['recruitment.read'],
+      },
+      {
+        href: '/recruitment/applicants',
+        label: 'Applicants',
+        icon: Users,
+        permissions: ['recruitment.read'],
+      },
+      {
+        href: '/recruitment/interviews',
+        label: 'Interviews',
+        icon: Handshake,
+        permissions: ['recruitment.read'],
+      },
+    ],
+  },
+
+  // ── Payroll ────────────────────────────────────────────────
+  {
+    title: 'Payroll',
+    feature: 'payroll',
+    items: [
+      {
+        href: '/payroll',
+        label: 'Dashboard',
+        icon: Banknote,
+        permissions: ['payroll.read'],
+      },
+      {
+        href: '/payroll/salary-structures',
+        label: 'Salary Structures',
+        icon: Building2,
+        permissions: ['payroll.read'],
+      },
+      {
+        href: '/payroll/employee-salaries',
+        label: 'Employee Salaries',
+        icon: Users,
+        permissions: ['payroll.read'],
+      },
+      {
+        href: '/payroll/payslips',
+        label: 'Payslips',
+        icon: Receipt,
+        permissions: ['payroll.read'],
+      },
+      {
+        href: '/payroll/loans',
+        label: 'Loans',
+        icon: DollarSign,
+        permissions: ['payroll.read'],
+      },
+      {
+        href: '/payroll/reimbursements',
+        label: 'Reimbursements',
+        icon: DollarSign,
+        permissions: ['payroll.read'],
+      },
+    ],
+  },
+
+  // ── Administration ─────────────────────────────────────────
+  {
+    title: 'Administration',
+    items: [
+      {
+        href: '/companies',
+        label: 'Companies',
+        icon: Home,
+        roles: ['super-admin'],
+        superAdminOnly: true,
+      },
+      {
+        href: '/billing',
+        label: 'Billing',
+        icon: DollarSign,
+        permissions: ['company.read'],
+      },
+      {
+        href: '/attendance/policies',
+        label: 'Attendance Policies',
+        icon: Shield,
+        permissions: ['company.update'],
+      },
+      {
+        href: '/attendance/security',
+        label: 'Attendance Security',
+        icon: Shield,
+        permissions: ['company.update'],
+      },
+      {
+        href: '/shifts',
+        label: 'Shifts',
+        icon: Timer,
+        permissions: ['shift.read'],
+      },
+      {
+        href: '/holidays',
+        label: 'Holidays',
+        icon: Sun,
+        permissions: ['holiday.read'],
+      },
+      {
+        href: '/branches',
+        label: 'Branches & Geo-Fencing',
+        icon: MapPin,
+        permissions: ['branch.read'],
+      },
+      {
+        href: '/roles',
+        label: 'Roles & Permissions',
+        icon: Shield,
+        roles: ['super-admin', 'company-owner', 'hr-manager'],
+      },
+    ],
+  },
+];
+
+// ──────────────────────────────────────────────────────────────────
+// Mobile Bottom Nav Items (subset, filtered by permissions)
+// ──────────────────────────────────────────────────────────────────
+
+export const MOBILE_BOTTOM_ITEMS: MenuItem[] = MENU_CONFIG.flatMap(
+  (section) => section.items.filter((item) => item.showOnMobile),
+);
+
+// ──────────────────────────────────────────────────────────────────
+// Route Permission Map (for route guards)
+// ──────────────────────────────────────────────────────────────────
+
+export interface RouteGuard {
+  path: string;
+  /** Required permissions (ANY match) — empty = no permission check */
+  permissions?: string[];
+  /** Required roles (ANY match) — empty = no role check */
+  roles?: string[];
+  /** Required feature flag */
+  feature?: string;
+  /** Redirect URL if unauthorized (default /login) */
+  redirect?: string;
+  /** Exact match or prefix match */
+  exact?: boolean;
+}
+
+/**
+ * Route protection configuration.
+ * Each route declares what's required to access it.
+ */
+export const ROUTE_GUARDS: RouteGuard[] = [
+  // Public routes — no auth needed
+  { path: '/login', permissions: [], redirect: '/dashboard' },
+  { path: '/register', permissions: [], redirect: '/dashboard' },
+
+  // Super Admin only
+  { path: '/companies', roles: ['super-admin'], exact: true },
+
+  // Management routes
+  { path: '/dashboard', permissions: ['employee.read'] },
+  { path: '/analytics', permissions: ['employee.read'] },
+  { path: '/employees', permissions: ['employee.read'] },
+  { path: '/attendance', permissions: ['attendance.read'] },
+  { path: '/attendance/regularization', permissions: ['attendance.approve'] },
+  { path: '/attendance/security', permissions: ['company.update'] },
+  { path: '/attendance/policies', permissions: ['company.update'] },
+  { path: '/leave', permissions: ['leave.read'] },
+
+  // ESS routes
+  { path: '/ess', permissions: ['employee.read'] },
+
+  // Recruitment
+  { path: '/recruitment', permissions: ['recruitment.read'], feature: 'recruitment' },
+
+  // Payroll
+  { path: '/payroll', permissions: ['payroll.read'], feature: 'payroll' },
+
+  // Admin routes
+  { path: '/billing', permissions: ['company.read'] },
+  { path: '/shifts', permissions: ['shift.read'] },
+  { path: '/holidays', permissions: ['holiday.read'] },
+  { path: '/branches', permissions: ['branch.read'] },
+  { path: '/roles', roles: ['super-admin', 'company-owner', 'hr-manager'] },
+];

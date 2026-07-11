@@ -2,73 +2,56 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
 import { clsx } from 'clsx';
-import { api, unwrap } from '@/lib/api-client';
-import {
-  LayoutDashboard, Users, Clock, CalendarDays, Timer, Sun,
-  MapPin, Shield, Building2, DollarSign, Briefcase, BarChart3,
-  Smartphone, FileText, Handshake, GraduationCap, UserCheck,
-  Banknote, Receipt, Home, UserCircle, FileWarning,
-} from 'lucide-react';
+import { useAuth } from '@/lib/auth-context';
+import { MENU_CONFIG, type MenuItem, type MenuSection } from '@/config/menu.config';
 
-const NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { href: '/employees', label: 'Employees', icon: Users },
-  { href: '/attendance', label: 'Attendance', icon: Clock },
-  { href: '/attendance/regularization', label: 'Regularization', icon: FileWarning },
-  { href: '/leave', label: 'Leave', icon: CalendarDays },
-];
+// ──────────────────────────────────────────────────────────────────
+// Filter helpers
+// ──────────────────────────────────────────────────────────────────
 
-const ESS_ITEMS = [
-  { href: '/ess', label: 'ESS Portal', icon: UserCircle },
-  { href: '/ess/profile', label: 'My Profile', icon: UserCheck },
-  { href: '/ess/documents', label: 'Documents', icon: FileText },
-  { href: '/ess/payslips', label: 'Payslips', icon: Receipt },
-  { href: '/ess/tax-declarations', label: 'Tax Declarations', icon: FileWarning },
-  { href: '/ess/attendance', label: 'Attendance Calendar', icon: Clock },
-  { href: '/ess/attendance/regularization', label: 'Regularization', icon: FileWarning },
-  { href: '/ess/leave', label: 'Leave History', icon: CalendarDays },
-  { href: '/ess/expenses', label: 'Expense Claims', icon: DollarSign },
-  { href: '/ess/devices', label: 'My Devices', icon: Smartphone },
-  { href: '/ess/assets', label: 'Assets', icon: Briefcase },
-  { href: '/ess/training', label: 'Training', icon: GraduationCap },
-];
-
-const RECRUITMENT_ITEMS = [
-  { href: '/recruitment', label: 'Dashboard', icon: Briefcase },
-  { href: '/recruitment/jobs', label: 'Job Postings', icon: Briefcase },
-  { href: '/recruitment/applicants', label: 'Applicants', icon: Users },
-  { href: '/recruitment/interviews', label: 'Interviews', icon: Handshake },
-];
-
-const PAYROLL_ITEMS = [
-  { href: '/payroll', label: 'Dashboard', icon: Banknote },
-  { href: '/payroll/salary-structures', label: 'Salary Structures', icon: Building2 },
-  { href: '/payroll/employee-salaries', label: 'Employee Salaries', icon: Users },
-  { href: '/payroll/payslips', label: 'Payslips', icon: Receipt },
-  { href: '/payroll/loans', label: 'Loans', icon: DollarSign },
-  { href: '/payroll/reimbursements', label: 'Reimbursements', icon: DollarSign },
-];
-
-const ADMIN_ITEMS = [
-  { href: '/billing', label: 'Billing', icon: DollarSign },
-  { href: '/attendance/security', label: 'Attendance Security', icon: Shield },
-  { href: '/shifts', label: 'Shifts', icon: Timer },
-  { href: '/holidays', label: 'Holidays', icon: Sun },
-  { href: '/branches', label: 'Branches', icon: MapPin },
-  { href: '/roles', label: 'Roles', icon: Shield },
-  { href: '/companies', label: 'Companies', icon: Home },
-];
-
-interface SectionProps {
-  title: string;
-  items: { href: string; label: string; icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }> }[];
-  pathname: string | null;
+function itemVisible(
+  item: MenuItem,
+  roles: string[],
+  permissions: string[],
+  featureMap: Record<string, boolean>,
+): boolean {
+  if (item.superAdminOnly && !roles.includes('super-admin')) return false;
+  if (item.roles && !item.roles.some((r) => roles.includes(r)) && !roles.includes('super-admin')) return false;
+  if (item.permissions && !item.permissions.some((p) => permissions.includes(p)) && !roles.includes('super-admin')) return false;
+  if (item.feature && !featureMap[item.feature] && !roles.includes('super-admin')) return false;
+  return true;
 }
 
-function NavSection({ title, items, pathname }: SectionProps) {
+function sectionVisible(
+  section: MenuSection,
+  roles: string[],
+  permissions: string[],
+  featureMap: Record<string, boolean>,
+): boolean {
+  if (section.superAdminOnly && !roles.includes('super-admin')) return false;
+  if (section.roles && !section.roles.some((r) => roles.includes(r)) && !roles.includes('super-admin')) return false;
+  if (section.feature && !featureMap[section.feature] && !roles.includes('super-admin')) return false;
+  // Section is visible only if at least one item is visible
+  return section.items.some((item) => itemVisible(item, roles, permissions, featureMap));
+}
+
+function filterItems(
+  items: MenuItem[],
+  roles: string[],
+  permissions: string[],
+  featureMap: Record<string, boolean>,
+): MenuItem[] {
+  return items.filter((item) => itemVisible(item, roles, permissions, featureMap));
+}
+
+// ──────────────────────────────────────────────────────────────────
+// NavSection sub-component
+// ──────────────────────────────────────────────────────────────────
+
+function NavSection({ title, items, pathname }: { title: string; items: MenuItem[]; pathname: string | null }) {
+  if (items.length === 0) return null;
+
   return (
     <div className="pb-1">
       <p className="px-3 pb-1.5 pt-4 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
@@ -107,16 +90,25 @@ function NavSection({ title, items, pathname }: SectionProps) {
   );
 }
 
+// ──────────────────────────────────────────────────────────────────
+// Sidebar Component
+// ──────────────────────────────────────────────────────────────────
+
 export function Sidebar() {
   const pathname = usePathname();
+  const { profile, roles, permissions, featureMap, isLoaded } = useAuth();
 
-  const { data: profile } = useQuery<{ firstName: string; lastName: string }>({
-    queryKey: ['me', 'profile'],
-    queryFn: () => unwrap(api.get('/me/profile')),
-    retry: false,
-  });
+  // Filter sections and items based on user's access
+  const visibleSections = MENU_CONFIG
+    .filter((section) => sectionVisible(section, roles, permissions, featureMap))
+    .map((section) => ({
+      ...section,
+      items: filterItems(section.items, roles, permissions, featureMap),
+    }));
 
-  const initials = profile ? `${profile.firstName?.[0] || ''}${profile.lastName?.[0] || ''}`.toUpperCase() : 'U';
+  const initials = profile
+    ? `${profile.firstName?.[0] || ''}${profile.lastName?.[0] || ''}`.toUpperCase()
+    : 'U';
   const fullName = profile ? `${profile.firstName} ${profile.lastName}` : 'User';
 
   return (
@@ -139,15 +131,22 @@ export function Sidebar() {
 
       {/* Scrollable nav area */}
       <nav className="sidebar-scroll flex-1 overflow-y-auto px-3 py-2">
-        <NavSection title="Employee Self-Service" items={ESS_ITEMS} pathname={pathname} />
-        <div className="mx-3 my-1 border-t border-gray-100" />
-        <NavSection title="Management" items={NAV_ITEMS} pathname={pathname} />
-        <div className="mx-3 my-1 border-t border-gray-100" />
-        <NavSection title="Recruitment" items={RECRUITMENT_ITEMS} pathname={pathname} />
-        <div className="mx-3 my-1 border-t border-gray-100" />
-        <NavSection title="Payroll" items={PAYROLL_ITEMS} pathname={pathname} />
-        <div className="mx-3 my-1 border-t border-gray-100" />
-        <NavSection title="Administration" items={ADMIN_ITEMS} pathname={pathname} />
+        {!isLoaded ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-accent" />
+          </div>
+        ) : (
+          visibleSections.map((section, idx) => (
+            <div key={section.title}>
+              {idx > 0 && <div className="mx-3 my-1 border-t border-gray-100" />}
+              <NavSection
+                title={section.title}
+                items={section.items}
+                pathname={pathname}
+              />
+            </div>
+          ))
+        )}
       </nav>
 
       {/* Footer */}

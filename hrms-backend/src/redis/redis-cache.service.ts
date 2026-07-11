@@ -82,6 +82,18 @@ export class RedisCacheService {
   }
 
   /**
+   * Get the remaining TTL of a key in seconds. Returns 0 if key doesn't exist.
+   */
+  async getTtl(key: string): Promise<number> {
+    if (!this.redis || !this.isConnected) return 0;
+    try {
+      return await this.redis.ttl(key);
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
    * Delete a key (for cache invalidation).
    */
   async del(key: string): Promise<void> {

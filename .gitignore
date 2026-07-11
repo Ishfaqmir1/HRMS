@@ -1,0 +1,16 @@
+# Temp/scratch files
+*.txt
+!package-lock.json
+!pnpm-lock.yaml
+!.npmrc
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

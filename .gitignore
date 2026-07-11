@@ -1,9 +1,6 @@
-# Temp/scratch files
-*.txt
-!package-lock.json
-!pnpm-lock.yaml
-!.npmrc
-*.log
+# Temp/scratch files (root level only)
+/*.txt
+/*.log
 
 # OS files
 .DS_Store

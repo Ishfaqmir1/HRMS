@@ -137,3 +137,11 @@ class UpdateAttendanceBaseDto {
 }
 
 export class UpdateAttendanceDto extends PartialType(UpdateAttendanceBaseDto) {}
+
+export class StartBreakDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+}
+
+export class EndBreakDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
+}

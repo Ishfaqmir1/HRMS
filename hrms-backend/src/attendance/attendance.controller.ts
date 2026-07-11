@@ -17,6 +17,8 @@ import {
   ClockOutDto,
   CreateAttendanceDto,
   UpdateAttendanceDto,
+  StartBreakDto,
+  EndBreakDto,
 } from './dto/attendance.dto';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { TenantId } from '../common/decorators/tenant.decorator';
@@ -30,6 +32,29 @@ import { PermissionsGuard } from '../common/guards/permissions.guard';
 @Controller('attendance')
 export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
+
+  // ---- Break Tracking ----
+
+  @Post('break/start')
+  @Permissions('attendance.create')
+  startBreak(@TenantId() companyId: string, @CurrentUser() user: AuthenticatedUser, @Body() dto: StartBreakDto) {
+    this.assertHasEmployeeProfile(user);
+    return this.attendanceService.startBreak(companyId, user.employeeId!, dto);
+  }
+
+  @Post('break/end')
+  @Permissions('attendance.create')
+  endBreak(@TenantId() companyId: string, @CurrentUser() user: AuthenticatedUser, @Body() dto: EndBreakDto) {
+    this.assertHasEmployeeProfile(user);
+    return this.attendanceService.endBreak(companyId, user.employeeId!, dto);
+  }
+
+  @Get('me/breaks/:recordId')
+  @Permissions('attendance.read')
+  getBreaks(@CurrentUser() user: AuthenticatedUser, @Param('recordId') recordId: string) {
+    this.assertHasEmployeeProfile(user);
+    return this.attendanceService.getBreaks(user.employeeId!, recordId);
+  }
 
   // ---- Self-service (any authenticated employee) ----
 

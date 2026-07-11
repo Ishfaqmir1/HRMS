@@ -1,13 +1,16 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AttendanceSource } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { GeoFenceService } from '../geo-fence/geo-fence.service';
 import { AttendanceSecurityService } from '../attendance-security/attendance-security.service';
+import { AttendancePolicyService } from '../attendance-policy/attendance-policy.service';
 import {
   ClockInDto,
   ClockOutDto,
   CreateAttendanceDto,
   UpdateAttendanceDto,
+  StartBreakDto,
+  EndBreakDto,
 } from './dto/attendance.dto';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 
@@ -23,21 +26,149 @@ function startOfNextDay(date: Date): Date {
   return d;
 }
 
+function minutesSinceMidnight(date: Date): number {
+  return date.getUTCHours() * 60 + date.getUTCMinutes();
+}
+
+function parseTimeToMinutes(timeStr: string): number {
+  const [h, m] = timeStr.split(':').map(Number);
+  return h * 60 + (m || 0);
+}
+
 @Injectable()
 export class AttendanceService {
+  private readonly logger = new Logger(AttendanceService.name);
+
   constructor(
     private prisma: PrismaService,
     private geoFenceService: GeoFenceService,
     private securityService: AttendanceSecurityService,
+    private policyService: AttendancePolicyService,
   ) {}
 
+  /**
+   * Applies attendance policy rules to determine late minutes, status adjustments,
+   * and other computed fields based on clock-in time vs shift schedule.
+   */
+  /**
+   * Converts a UTC Date to minutes-since-midnight in a given timezone offset.
+   * Falls back to UTC if no offset is provided.
+   */
+  private toLocalMinutes(date: Date, timezoneOffsetMinutes?: number): number {
+    const utcMinutes = date.getUTCHours() * 60 + date.getUTCMinutes();
+    if (timezoneOffsetMinutes == null) return utcMinutes;
+    // Apply timezone offset: local = UTC + offset
+    const localMinutes = utcMinutes + timezoneOffsetMinutes;
+    // Clamp to 0-1440 (handles UTC day-rollover across midnight)
+    return ((localMinutes % 1440) + 1440) % 1440;
+  }
+
+  private async applyPolicyEngine(
+    companyId: string,
+    employeeId: string,
+    checkInTime: Date,
+  ): Promise<{ lateMinutes: number; status: string }> {
+    const policy = await this.policyService.getOrCreatePolicy(companyId);
+    let lateMinutes = 0;
+    let status = 'PRESENT';
+
+    if (policy.enableAutoLateDetection) {
+      // Get employee's shift + branch to determine expected start time & timezone
+      const employee = await this.prisma.employee.findFirst({
+        where: { id: employeeId, companyId },
+        include: { shift: true, branch: { select: { timezone: true } } },
+      });
+
+      // Determine timezone offset from branch (simplified: UTC offset in minutes)
+      // In production, use a library like moment-timezone for proper DST-aware conversion.
+      // Here we parse a simplified "UTC±HH:MM" offset from the branch timezone string.
+      let tzOffsetMinutes: number | undefined;
+      const branchTz = employee?.branch?.timezone;
+      if (branchTz) {
+        const match = branchTz.match(/UTC([+-])(\d{2}):?(\d{2})?/);
+        if (match) {
+          const sign = match[1] === '+' ? 1 : -1;
+          const hours = parseInt(match[2], 10);
+          const mins = parseInt(match[3] || '0', 10);
+          tzOffsetMinutes = sign * (hours * 60 + mins);
+        }
+      }
+
+      const startTime = employee?.shift?.startTime || policy.defaultStartTime;
+      const expectedStartMinutes = parseTimeToMinutes(startTime);
+      const actualMinutes = this.toLocalMinutes(checkInTime, tzOffsetMinutes);
+
+      const diff = actualMinutes - expectedStartMinutes;
+      lateMinutes = Math.max(0, diff - policy.gracePeriodMinutes);
+
+      if (lateMinutes > 0) {
+        status = 'LATE';
+      }
+    }
+
+    return { lateMinutes, status };
+  }
+
+  /**
+   * Applies policy rules on clock-out: half-day detection, overtime, early exit.
+   */
+  private async applyClockOutPolicy(
+    companyId: string,
+    employeeId: string,
+    checkInTime: Date,
+    checkOutTime: Date,
+    currentStatus: string,
+  ): Promise<{
+    status: string;
+    overtimeMinutes: number;
+    earlyExitMinutes: number;
+  }> {
+    const policy = await this.policyService.getOrCreatePolicy(companyId);
+    let status = currentStatus;
+    let overtimeMinutes = 0;
+    let earlyExitMinutes = 0;
+
+    const workedMinutes = Math.round((checkOutTime.getTime() - checkInTime.getTime()) / 60000);
+
+    // Half-day detection
+    if (policy.enableAutoHalfDay && workedMinutes < policy.halfDayThresholdMinutes) {
+      if (status !== 'LATE') status = 'HALF_DAY';
+    }
+
+    // Overtime calculation
+    if (policy.enableOvertime && workedMinutes > policy.overtimeStartsAfterMinutes) {
+      overtimeMinutes = Math.min(
+        workedMinutes - policy.overtimeStartsAfterMinutes,
+        policy.maxOvertimeMinutes,
+      );
+    }
+
+    // Early exit detection
+    const employee = await this.prisma.employee.findFirst({
+      where: { id: employeeId, companyId },
+      include: { shift: true },
+    });
+    const endTime = employee?.shift?.endTime || policy.defaultEndTime;
+    const expectedEndMinutes = parseTimeToMinutes(endTime);
+    const actualEndMinutes = minutesSinceMidnight(checkOutTime);
+    const earlyExit = expectedEndMinutes - actualEndMinutes - policy.gracePeriodMinutes;
+    if (earlyExit > 0 && currentStatus === 'PRESENT') {
+      earlyExitMinutes = earlyExit;
+    }
+
+    return { status, overtimeMinutes, earlyExitMinutes };
+  }
+
   async clockIn(companyId: string, employeeId: string, dto: ClockInDto) {
-    const today = startOfDay(new Date());
+    const now = new Date();
+    const today = startOfDay(now);
     const existing = await this.prisma.attendanceRecord.findUnique({
       where: { employeeId_date: { employeeId, date: today } },
     });
 
-    if (existing?.checkIn) {
+    const policy = await this.policyService.getOrCreatePolicy(companyId);
+
+    if (existing?.checkIn && !policy.enableMultiplePunch) {
       throw new BadRequestException('You have already clocked in today.');
     }
 
@@ -80,7 +211,6 @@ export class AttendanceService {
       );
 
       if (!fenceResult.withinFence) {
-        // Log geo-fence failure
         await this.securityService.logSecurityEvent(companyId, employeeId, {
           action: 'CLOCK_IN',
           status: 'DENIED',
@@ -99,13 +229,23 @@ export class AttendanceService {
 
     const source = this.determineSource(dto);
 
+    // ── Apply Policy Engine ──────────────────────────────────────
+    const { lateMinutes, status } = await this.applyPolicyEngine(
+      companyId, employeeId, now,
+    );
+
+    if (lateMinutes > 0) {
+      this.logger.log(`Employee ${employeeId} is ${lateMinutes}min late (auto-detected)`);
+    }
+
     const data = {
-      checkIn: new Date(),
+      checkIn: now,
       source: source as AttendanceSource,
       checkInLat: dto.lat,
       checkInLng: dto.lng,
       notes: dto.notes,
-      status: 'PRESENT' as const,
+      status: status as any,
+      lateMinutes,
     };
 
     let record;
@@ -143,17 +283,26 @@ export class AttendanceService {
       longitude: dto.lng,
       accuracy: dto.locationAccuracy,
       layerResults: { summary: securityResult },
-      metadata: { attendanceRecordId: record.id, source },
+      metadata: { attendanceRecordId: record.id, source, lateMinutes, autoStatus: status },
     });
 
     return record;
   }
 
   async clockOut(companyId: string, employeeId: string, dto: ClockOutDto) {
-    const today = startOfDay(new Date());
-    const existing = await this.prisma.attendanceRecord.findUnique({
+    const now = new Date();
+    const today = startOfDay(now);
+
+    let existing = await this.prisma.attendanceRecord.findUnique({
       where: { employeeId_date: { employeeId, date: today } },
     });
+
+    if (!existing?.checkIn) {
+      const yesterday = startOfDay(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+      existing = await this.prisma.attendanceRecord.findUnique({
+        where: { employeeId_date: { employeeId, date: yesterday } },
+      });
+    }
 
     if (!existing?.checkIn) {
       throw new BadRequestException('You must clock in before clocking out.');
@@ -192,13 +341,29 @@ export class AttendanceService {
     }
 
     const checkOut = new Date();
-    const workedMinutes = Math.round((checkOut.getTime() - existing.checkIn.getTime()) / 60000);
+    const rawWorkedMinutes = Math.round((checkOut.getTime() - existing.checkIn.getTime()) / 60000);
+
+    // ── Apply Clock-Out Policy Engine ────────────────────────────
+    const { status, overtimeMinutes, earlyExitMinutes } = await this.applyClockOutPolicy(
+      companyId,
+      employeeId,
+      existing.checkIn!,
+      checkOut,
+      existing.status,
+    );
+
+    // Calculate final worked minutes (minus any break time)
+    const breakMinutes = existing.breakMinutes || 0;
+    const workedMinutes = Math.max(0, rawWorkedMinutes - breakMinutes);
 
     const record = await this.prisma.attendanceRecord.update({
       where: { id: existing.id },
       data: {
         checkOut,
         workedMinutes,
+        overtimeMinutes,
+        earlyExitMinutes,
+        status: status as any,
         checkOutLat: dto.lat,
         checkOutLng: dto.lng,
         notes: dto.notes ?? existing.notes,
@@ -219,7 +384,6 @@ export class AttendanceService {
       });
     }
 
-    // Log successful clock-out
     await this.securityService.logSecurityEvent(companyId, employeeId, {
       action: 'CLOCK_OUT',
       status: securityResult.allowed ? 'ALLOWED' : 'FLAGGED',
@@ -231,10 +395,104 @@ export class AttendanceService {
       longitude: dto.lng,
       accuracy: dto.locationAccuracy,
       layerResults: { summary: securityResult },
-      metadata: { attendanceRecordId: record.id, workedMinutes },
+      metadata: { attendanceRecordId: record.id, workedMinutes, overtimeMinutes, autoStatus: status },
     });
 
     return record;
+  }
+
+  // ==================================================================
+  // Break Tracking
+  // ==================================================================
+
+  async startBreak(companyId: string, employeeId: string, dto: StartBreakDto) {
+    const today = startOfDay(new Date());
+    const record = await this.prisma.attendanceRecord.findUnique({
+      where: { employeeId_date: { employeeId, date: today } },
+    });
+
+    if (!record?.checkIn) {
+      throw new BadRequestException('You must clock in before starting a break.');
+    }
+    if (record.checkOut) {
+      throw new BadRequestException('You have already clocked out today.');
+    }
+
+    // Check no active break
+    const activeBreak = await this.prisma.attendanceBreak.findFirst({
+      where: { recordId: record.id, endTime: null },
+    });
+    if (activeBreak) {
+      throw new BadRequestException('You already have an active break. End it first.');
+    }
+
+    const breakRecord = await this.prisma.attendanceBreak.create({
+      data: {
+        companyId,
+        employeeId,
+        recordId: record.id,
+        type: 'BREAK',
+        startTime: new Date(),
+      },
+    });
+
+    // Store the notes on the attendance record if provided
+    if (dto.notes) {
+      await this.prisma.attendanceRecord.update({
+        where: { id: record.id },
+        data: { notes: dto.notes },
+      });
+    }
+
+    // Update record's break start
+    await this.prisma.attendanceRecord.update({
+      where: { id: record.id },
+      data: { breakStart: breakRecord.startTime },
+    });
+
+    return breakRecord;
+  }
+
+  async endBreak(companyId: string, employeeId: string, dto: EndBreakDto) {
+    const today = startOfDay(new Date());
+    const record = await this.prisma.attendanceRecord.findUnique({
+      where: { employeeId_date: { employeeId, date: today } },
+    });
+
+    if (!record?.checkIn) {
+      throw new BadRequestException('You must clock in before ending a break.');
+    }
+
+    const activeBreak = await this.prisma.attendanceBreak.findFirst({
+      where: { recordId: record.id, endTime: null },
+    });
+    if (!activeBreak) {
+      throw new BadRequestException('No active break found.');
+    }
+
+    const endTime = new Date();
+    const durationMinutes = Math.round((endTime.getTime() - activeBreak.startTime.getTime()) / 60000);
+
+    await this.prisma.attendanceBreak.update({
+      where: { id: activeBreak.id },
+      data: { endTime, durationMinutes },
+    });
+
+    // Update record's break end and total break minutes
+    const totalBreakMinutes = (record.breakMinutes || 0) + durationMinutes;
+    await this.prisma.attendanceRecord.update({
+      where: { id: record.id },
+      data: { breakEnd: endTime, breakMinutes: totalBreakMinutes },
+    });
+
+    return { message: 'Break ended', durationMinutes, totalBreakMinutes };
+  }
+
+  async getBreaks(employeeId: string, recordId: string) {
+    return this.prisma.attendanceBreak.findMany({
+      where: { employeeId, recordId },
+      orderBy: { startTime: 'asc' },
+    });
   }
 
   /** Determines the attendance source based on which security layers were used. */

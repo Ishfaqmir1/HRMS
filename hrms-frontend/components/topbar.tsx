@@ -1,10 +1,10 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
 import { LogOut, Menu, Bell } from 'lucide-react';
-import { api, unwrap } from '@/lib/api-client';
-import { clearSession, getRefreshToken } from '@/lib/auth';
+import { api } from '@/lib/api-client';
+import { getRefreshToken } from '@/lib/auth';
+import { useAuth } from '@/lib/auth-context';
+import { useAuthActions } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 
 interface TopbarProps {
@@ -12,13 +12,8 @@ interface TopbarProps {
 }
 
 export function Topbar({ onMenuClick }: TopbarProps) {
-  const router = useRouter();
-
-  const { data: profile } = useQuery<{ firstName: string; lastName: string }>({
-    queryKey: ['me', 'profile'],
-    queryFn: () => unwrap(api.get('/me/profile')),
-    retry: false,
-  });
+  const { profile } = useAuth();
+  const { signOut } = useAuthActions();
 
   async function handleLogout() {
     const refreshToken = getRefreshToken();
@@ -27,8 +22,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
     } catch {
       // best-effort
     }
-    clearSession();
-    router.push('/login');
+    signOut();
   }
 
   return (

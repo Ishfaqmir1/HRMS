@@ -31,7 +31,9 @@ model Company {
   stripeSubscriptionId      String?
   assetAssignments          AssetAssignment[]
   assets                    Asset[]
+  attendanceBreaks          AttendanceBreak[]
   attendancePhotos          AttendancePhoto[]
+  attendancePolicy          AttendancePolicy?
   attendanceRecords         AttendanceRecord[]
   attendanceRegularizations AttendanceRegularization[]
   attendanceSecurityConfig  AttendanceSecurityConfig?
@@ -282,6 +284,7 @@ model Employee {
   updatedAt                 DateTime                   @updatedAt
   deletedAt                 DateTime?
   assetAssignments          AssetAssignment[]
+  attendanceBreaks          AttendanceBreak[]
   attendancePhotos          AttendancePhoto[]
   attendanceRecords         AttendanceRecord[]
   approvedRegularizations   AttendanceRegularization[] @relation("ApproverRegularizations")
@@ -536,27 +539,84 @@ model AttendanceSecurityLog {
   @@map("attendance_security_logs")
 }
 
+model AttendancePolicy {
+  id                        String   @id @default(uuid())
+  companyId                 String   @unique
+  name                      String   @default("Default Policy")
+  timezone                  String   @default("UTC")
+
+  // Working days (0=Sun, 1=Mon, ..., 6=Sat)
+  workingDays               Int[]    @default([1,2,3,4,5])
+
+  // Working hours
+  defaultStartTime          String   @default("09:00")
+  defaultEndTime            String   @default("18:00")
+  dailyWorkingHours         Float    @default(9)
+  breakDurationMinutes      Int      @default(60)
+
+  // Grace & late rules
+  gracePeriodMinutes        Int      @default(15)
+  lateThresholdMinutes      Int      @default(30)
+  veryLateThresholdMinutes  Int      @default(60)
+  halfDayThresholdMinutes   Int      @default(240)
+  minimumWorkingMinutes     Int      @default(480)
+  maximumWorkingMinutes     Int      @default(720)
+
+  // Overtime
+  enableOvertime            Boolean  @default(true)
+  overtimeStartsAfterMinutes Int     @default(540)
+  maxOvertimeMinutes        Int      @default(240)
+
+  // Auto-detection flags
+  enableAutoLateDetection   Boolean  @default(true)
+  enableAutoHalfDay         Boolean  @default(true)
+  enableAutoAbsent          Boolean  @default(true)
+
+  // Auto checkout
+  enableAutoCheckout        Boolean  @default(true)
+  autoCheckoutTime          String   @default("23:59")
+
+  // Remote / flexible
+  enableRemoteWork          Boolean  @default(false)
+  enableFlexibleShift       Boolean  @default(false)
+  enableMultiplePunch       Boolean  @default(false)
+  crossMidnightShift        Boolean  @default(false)
+
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  company                   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("attendance_policies")
+}
+
 model AttendanceRecord {
-  id              String                     @id @default(uuid())
-  companyId       String
-  employeeId      String
-  date            DateTime
-  checkIn         DateTime?
-  checkOut        DateTime?
-  workedMinutes   Int?
-  status          AttendanceStatus           @default(PRESENT)
-  source          AttendanceSource           @default(WEB)
-  checkInLat      Float?
-  checkInLng      Float?
-  checkOutLat     Float?
-  checkOutLng     Float?
-  notes           String?
-  createdAt       DateTime                   @default(now())
-  updatedAt       DateTime                   @updatedAt
-  photos          AttendancePhoto[]
-  company         Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employee        Employee                   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  regularizations AttendanceRegularization[]
+  id                String                     @id @default(uuid())
+  companyId         String
+  employeeId        String
+  date              DateTime
+  checkIn           DateTime?
+  checkOut          DateTime?
+  workedMinutes     Int?
+  breakMinutes      Int?                       @default(0)
+  breakStart        DateTime?
+  breakEnd          DateTime?
+  overtimeMinutes   Int?                       @default(0)
+  lateMinutes       Int?                       @default(0)
+  earlyExitMinutes  Int?                       @default(0)
+  status            AttendanceStatus           @default(PRESENT)
+  source            AttendanceSource           @default(WEB)
+  checkInLat        Float?
+  checkInLng        Float?
+  checkOutLat       Float?
+  checkOutLng       Float?
+  notes             String?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+  photos            AttendancePhoto[]
+  breaks            AttendanceBreak[]
+  company           Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee          Employee                   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  regularizations   AttendanceRegularization[]
 
   @@unique([employeeId, date])
   @@index([companyId])
@@ -565,6 +625,28 @@ model AttendanceRecord {
   @@index([companyId, date, status])
   @@map("attendance_records")
 }
+
+model AttendanceBreak {
+  id          String           @id @default(uuid())
+  companyId   String
+  employeeId  String
+  recordId    String
+  type        String           @default("BREAK")
+  startTime   DateTime
+  endTime     DateTime?
+  durationMinutes Int?         @default(0)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee    Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  record      AttendanceRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@index([recordId])
+  @@index([employeeId])
+  @@map("attendance_breaks")
+}
+
+
 
 model AttendanceRegularization {
   id                String               @id @default(uuid())

@@ -1359,6 +1359,40 @@ async function main() {
     }
   }
 
+  // --- Attendance Policy ---
+  const policyExists = await prisma.attendancePolicy.findUnique({
+    where: { companyId: demoCompany.id },
+  });
+  if (!policyExists) {
+    await prisma.attendancePolicy.create({
+      data: {
+        companyId: demoCompany.id,
+        name: 'Default Policy',
+        timezone: 'UTC',
+        workingDays: [1, 2, 3, 4, 5],
+        defaultStartTime: '09:00',
+        defaultEndTime: '18:00',
+        dailyWorkingHours: 9,
+        breakDurationMinutes: 60,
+        gracePeriodMinutes: 15,
+        lateThresholdMinutes: 30,
+        veryLateThresholdMinutes: 60,
+        halfDayThresholdMinutes: 240,
+        minimumWorkingMinutes: 480,
+        maximumWorkingMinutes: 720,
+        enableOvertime: true,
+        overtimeStartsAfterMinutes: 540,
+        maxOvertimeMinutes: 240,
+        enableAutoLateDetection: true,
+        enableAutoHalfDay: true,
+        enableAutoAbsent: true,
+        enableAutoCheckout: true,
+        crossMidnightShift: false,
+      },
+    });
+    console.log('Default attendance policy created for demo company');
+  }
+
   // --- Attendance Security Config ---
   const securityConfigExists = await prisma.attendanceSecurityConfig.findFirst({
     where: { companyId: demoCompany.id },

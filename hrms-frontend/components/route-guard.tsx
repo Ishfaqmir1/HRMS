@@ -1,0 +1,113 @@
+'use client';
+
+import { useEffect, useState, type ReactNode } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
+import { useAuth } from '@/lib/auth-context';
+import { ROUTE_GUARDS, type RouteGuard } from '@/config/menu.config';
+
+interface ProtectedRouteProps {
+  children: ReactNode;
+  /** Optional fallback UI while loading */
+  fallback?: ReactNode;
+}
+
+/**
+ * Finds the matching route guard config for a given pathname.
+ * Uses exact match first, then prefix match.
+ */
+function findGuard(pathname: string): RouteGuard | undefined {
+  // Exact match
+  const exact = ROUTE_GUARDS.find((g) => g.exact !== false && g.path === pathname);
+  if (exact) return exact;
+
+  // Prefix match (e.g., /ess/profile matches /ess guard)
+  const prefix = ROUTE_GUARDS.find((g) => {
+    if (g.exact) return false;
+    // Match if pathname starts with the guard's path
+    return pathname === g.path || pathname.startsWith(g.path + '/');
+  });
+  return prefix;
+}
+
+/**
+ * Client-side route guard component.
+ *
+ * Wraps page content and redirects if the user doesn't have the required
+ * permissions, roles, or feature flags for the current route.
+ *
+ * Usage in layout.tsx:
+ * ```tsx
+ * <ProtectedRoute>
+ *   {children}
+ * </ProtectedRoute>
+ * ```
+ */
+export function ProtectedRoute({ children, fallback }: ProtectedRouteProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { isLoaded, isAuthenticated, roles, permissions, featureMap, loading } = useAuth();
+  const [authorized, setAuthorized] = useState(false);
+
+  useEffect(() => {
+    if (!isLoaded || loading) return;
+
+    if (!isAuthenticated) {
+      const loginUrl = `/login?redirect=${encodeURIComponent(pathname)}`;
+      router.replace(loginUrl);
+      return;
+    }
+
+    const guard = findGuard(pathname);
+
+    // No guard config found — allow access
+    if (!guard) {
+      setAuthorized(true);
+      return;
+    }
+
+    // Check permissions
+    if (guard.permissions && guard.permissions.length > 0) {
+      const hasPermission = guard.permissions.some(
+        (p) => permissions.includes(p),
+      );
+      if (!hasPermission && !roles.includes('super-admin')) {
+        router.replace('/dashboard');
+        return;
+      }
+    }
+
+    // Check roles
+    if (guard.roles && guard.roles.length > 0) {
+      const hasRole = guard.roles.some((r) => roles.includes(r));
+      if (!hasRole && !roles.includes('super-admin')) {
+        router.replace('/dashboard');
+        return;
+      }
+    }
+
+    // Check feature flag
+    if (guard.feature) {
+      const enabled = featureMap[guard.feature] === true;
+      if (!enabled && !roles.includes('super-admin')) {
+        router.replace('/dashboard');
+        return;
+      }
+    }
+
+    setAuthorized(true);
+  }, [isLoaded, isAuthenticated, loading, pathname, roles, permissions, featureMap, router]);
+
+  // Show fallback or nothing while checking
+  if (!isLoaded || loading || !authorized) {
+    return fallback ?? (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-accent" />
+          <p className="text-sm text-gray-500">Checking access...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}

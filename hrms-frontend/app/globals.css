@@ -387,6 +387,17 @@
 }
 
 /* =======================================================
+   Right Drawer Slide Animation
+   ======================================================= */
+@keyframes slide-right {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+.animate-slide-right {
+  animation: slide-right 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* =======================================================
    Pulse Dot for status indicators
    ======================================================= */
 @layer components {

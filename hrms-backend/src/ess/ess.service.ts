@@ -182,6 +182,28 @@ export class EssService {
         date: { gte: startDate, lte: endDate },
       },
       orderBy: { date: 'asc' },
+      include: {
+        photos: {
+          select: {
+            id: true,
+            photoType: true,
+            imageUrl: true,
+            faceMatchScore: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+        breaks: {
+          select: {
+            id: true,
+            type: true,
+            startTime: true,
+            endTime: true,
+            durationMinutes: true,
+          },
+          orderBy: { startTime: 'asc' },
+        },
+      },
     });
 
     // Also get holidays for this month

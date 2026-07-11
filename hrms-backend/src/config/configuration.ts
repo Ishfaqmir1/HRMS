@@ -39,6 +39,18 @@ export default () => {
       limit: parseInt(process.env.THROTTLE_LIMIT || '100', 10),
     },
 
+    loginSecurity: {
+      maxFailedAttempts: parseInt(process.env.LOGIN_MAX_FAILED_ATTEMPTS || '5', 10),
+      lockoutDurationMinutes: parseInt(process.env.LOGIN_LOCKOUT_MINUTES || '15', 10),
+    },
+
+    security: {
+      hstsMaxAge: parseInt(process.env.HSTS_MAX_AGE || '31536000', 10), // 1 year
+      hstsIncludeSubDomains: process.env.HSTS_INCLUDE_SUBDOMAINS !== 'false',
+      // CSP directives — customize for your deployment
+      cspDirectives: process.env.CSP_DIRECTIVES || "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self';",
+    },
+
     // ======================================================================
     // SECURITY WARNING: Never hardcode secrets in config files.
     // All secrets (JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, DATABASE_URL,

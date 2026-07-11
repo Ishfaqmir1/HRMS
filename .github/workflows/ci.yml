@@ -80,9 +80,9 @@ jobs:
         working-directory: hrms-backend
         run: npx prisma generate
 
-      - name: Run Prisma migrations
+      - name: Sync database schema
         working-directory: hrms-backend
-        run: npx prisma migrate deploy
+        run: npx prisma db push
 
       - name: Seed database
         working-directory: hrms-backend

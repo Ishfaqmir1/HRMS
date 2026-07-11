@@ -309,15 +309,15 @@ export class AuthService {
     const accessExpiresIn = this.configService.get<string>('jwt.accessExpiresIn')!;
     const refreshExpiresIn = this.configService.get<string>('jwt.refreshExpiresIn')!;
 
-    const accessToken = this.jwtService.sign(payload, {
+    const accessToken = this.jwtService.sign(payload as object, {
       secret: this.configService.get<string>('jwt.accessSecret'),
       expiresIn: accessExpiresIn,
-    });
+    } as any);
 
-    const refreshToken = this.jwtService.sign(payload, {
+    const refreshToken = this.jwtService.sign(payload as object, {
       secret: this.configService.get<string>('jwt.refreshSecret'),
       expiresIn: refreshExpiresIn,
-    });
+    } as any);
 
     await this.prisma.refreshToken.create({
       data: {

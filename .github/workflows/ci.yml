@@ -82,7 +82,7 @@ jobs:
 
       - name: Sync database schema
         working-directory: hrms-backend
-        run: npx prisma db push
+        run: npx prisma db push --accept-data-loss
 
       - name: Seed database
         working-directory: hrms-backend

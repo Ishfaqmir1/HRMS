@@ -74,7 +74,7 @@ jobs:
 
       - name: Install backend dependencies
         working-directory: hrms-backend
-        run: npm install --legacy-peer-deps
+        run: npm ci
 
       - name: Generate Prisma client
         working-directory: hrms-backend
@@ -116,7 +116,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: hrms-frontend
-        run: npm install --legacy-peer-deps
+        run: npm ci
 
       - name: Lint
         working-directory: hrms-frontend

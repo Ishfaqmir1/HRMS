@@ -163,4 +163,68 @@ export class EmployeesService {
       data: { deletedAt: new Date(), status: 'TERMINATED' },
     });
   }
+
+  /**
+   * Bulk-import employees from an array of pre-validated DTOs.
+   * Validates each row individually and collects errors so that a
+   * partial success is returned — no transaction rollback on a single
+   * bad row.
+   */
+  async importEmployees(companyId: string, employees: CreateEmployeeDto[]) {
+    const results: { row: number; employeeCode: string; status: string; error?: string }[] = [];
+    let createdCount = 0;
+
+    for (let i = 0; i < employees.length; i++) {
+      const dto = employees[i];
+      try {
+        // Check for duplicate employee code within the import batch or existing DB
+        const existingCode = await this.prisma.employee.findFirst({
+          where: { companyId, employeeCode: dto.employeeCode },
+        });
+        if (existingCode) {
+          results.push({
+            row: i + 1,
+            employeeCode: dto.employeeCode,
+            status: 'SKIPPED',
+            error: 'Employee code already exists',
+          });
+          continue;
+        }
+
+        const { createLoginAccount, roleSlug, ...employeeData } = dto;
+
+        await this.prisma.$transaction(async (tx) => {
+          await tx.employee.create({
+            data: {
+              ...employeeData,
+              dateOfJoining: new Date(dto.dateOfJoining),
+              dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined,
+              companyId,
+            },
+          });
+        });
+
+        createdCount++;
+        results.push({
+          row: i + 1,
+          employeeCode: dto.employeeCode,
+          status: 'CREATED',
+        });
+      } catch (err: any) {
+        results.push({
+          row: i + 1,
+          employeeCode: dto.employeeCode,
+          status: 'FAILED',
+          error: err?.message || 'Unknown error',
+        });
+      }
+    }
+
+    return {
+      total: employees.length,
+      created: createdCount,
+      failed: employees.length - createdCount,
+      results,
+    };
+  }
 }

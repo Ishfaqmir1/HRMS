@@ -1,11 +1,6 @@
 export default () => {
-  // Warn if JWT secrets are using development fallbacks
-  if (!process.env.JWT_ACCESS_SECRET || !process.env.JWT_REFRESH_SECRET) {
-    console.warn(
-      '⚠️  WARNING: JWT secrets not set via environment variables. ' +
-      'Using development fallbacks. Set JWT_ACCESS_SECRET and JWT_REFRESH_SECRET in production.',
-    );
-  }
+  // Validate that critical secrets are set (strict check moved to main.ts bootstrap)
+  // This file returns undefined for missing secrets — the bootstrap validates and fails early.
 
   return {
     nodeEnv: process.env.NODE_ENV || 'development',
@@ -26,9 +21,12 @@ export default () => {
     },
 
     jwt: {
-      accessSecret: process.env.JWT_ACCESS_SECRET || 'dev_access_secret_change_in_production',
+      // NOTE: No fallback defaults! Must be set via environment variables.
+      // The bootstrap process in main.ts validates these are present and
+      // fails with a clear error if they are not.
+      accessSecret: process.env.JWT_ACCESS_SECRET,
       accessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '15m',
-      refreshSecret: process.env.JWT_REFRESH_SECRET || 'dev_refresh_secret_change_in_production',
+      refreshSecret: process.env.JWT_REFRESH_SECRET,
       refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
     },
 
@@ -36,12 +34,12 @@ export default () => {
 
     throttle: {
       ttl: parseInt(process.env.THROTTLE_TTL || '60', 10),
-      limit: parseInt(process.env.THROTTLE_LIMIT || '100', 10),
+      limit: parseInt(process.env.THROTTLE_LIMIT || '30', 10),
     },
 
     loginSecurity: {
       maxFailedAttempts: parseInt(process.env.LOGIN_MAX_FAILED_ATTEMPTS || '5', 10),
-      lockoutDurationMinutes: parseInt(process.env.LOGIN_LOCKOUT_MINUTES || '15', 10),
+      lockoutDurationMinutes: parseInt(process.env.LOGIN_LOCKOUT_MINUTES || '30', 10),
     },
 
     security: {

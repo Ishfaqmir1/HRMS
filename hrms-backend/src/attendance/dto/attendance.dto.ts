@@ -145,3 +145,60 @@ export class StartBreakDto {
 export class EndBreakDto {
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 }
+
+// ==================================================================
+// Attendance Analytics / Reports DTOs
+// ==================================================================
+
+export enum TrendGranularity {
+  DAY = 'day',
+  MONTH = 'month',
+}
+
+export class AttendanceTrendQueryDto {
+  @ApiProperty({ description: 'Start date (YYYY-MM-DD)' })
+  @IsDateString()
+  from: string;
+
+  @ApiProperty({ description: 'End date (YYYY-MM-DD)' })
+  @IsDateString()
+  to: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString() departmentId?: string;
+
+  @ApiPropertyOptional({ enum: TrendGranularity, default: TrendGranularity.MONTH })
+  @IsOptional()
+  @IsEnum(TrendGranularity)
+  granularity?: TrendGranularity;
+}
+
+export class DepartmentSummaryQueryDto {
+  @ApiProperty({ description: 'Start date (YYYY-MM-DD)' })
+  @IsDateString()
+  from: string;
+
+  @ApiProperty({ description: 'End date (YYYY-MM-DD)' })
+  @IsDateString()
+  to: string;
+}
+
+export class AttendanceCsvQueryDto {
+  @ApiPropertyOptional({ description: 'Start date (YYYY-MM-DD)' })
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
+  @ApiPropertyOptional({ description: 'End date (YYYY-MM-DD)' })
+  @IsOptional()
+  @IsDateString()
+  to?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString() employeeId?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString() departmentId?: string;
+
+  @ApiPropertyOptional({ enum: AttendanceStatusDto })
+  @IsOptional()
+  @IsEnum(AttendanceStatusDto)
+  status?: AttendanceStatusDto;
+}

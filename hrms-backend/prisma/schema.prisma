@@ -46,6 +46,8 @@ model Company {
   departments               Department[]
   designations              Designation[]
   complianceConfig          ComplianceConfig?
+  documentTemplates        DocumentTemplate[]
+  generatedDocuments        GeneratedDocument[]
   employeeDocuments         EmployeeDocument[]
   employeeSalaries          EmployeeSalary[]
   employees                 Employee[]
@@ -306,6 +308,7 @@ model Employee {
   approvedLeaveRequests     LeaveRequest[]             @relation("ApproverLeaveRequests")
   leaveRequests             LeaveRequest[]             @relation("EmployeeLeaveRequests")
   loans                     Loan[]
+  generatedDocuments        GeneratedDocument[]
   payslips                  Payslip[]
   qrCodeSessions            QRCodeSession[]
   reimbursements            Reimbursement[]
@@ -801,6 +804,8 @@ model PayrollRun {
   companyId       String
   month           Int
   year            Int
+  version         Int              @default(1)
+  previousRunId   String?
   status          PayrollRunStatus @default(DRAFT)
   processedById   String?
   processedAt     DateTime?
@@ -808,13 +813,16 @@ model PayrollRun {
   totalDeductions Float            @default(0)
   totalNet        Float            @default(0)
   employeeCount   Int              @default(0)
+  recalcReason    String?
   notes           String?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   payslips        Payslip[]
+  previousRun     PayrollRun?      @relation("PayrollVersion", fields: [previousRunId], references: [id])
+  childRuns       PayrollRun[]     @relation("PayrollVersion")
 
-  @@unique([companyId, month, year])
+  @@unique([companyId, month, year, version])
   @@index([companyId])
   @@index([companyId, month, year])
   @@map("payroll_runs")
@@ -825,6 +833,7 @@ model Payslip {
   companyId          String
   employeeId         String
   runId              String
+  previousPayslipId  String?
   basic              Float         @default(0)
   housingAllowance   Float         @default(0)
   transportAllowance Float         @default(0)
@@ -840,6 +849,7 @@ model Payslip {
   otherDeductions    Float         @default(0)
   totalDeductions    Float         @default(0)
   netPay             Float         @default(0)
+  adjustments        Json?
   status             PayslipStatus @default(DRAFT)
   paidAt             DateTime?
   paidById           String?
@@ -849,6 +859,8 @@ model Payslip {
   company            Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   employee           Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   run                PayrollRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  previousPayslip    Payslip?      @relation("PayslipVersion", fields: [previousPayslipId], references: [id])
+  revisedPayslips    Payslip[]     @relation("PayslipVersion")
 
   @@unique([employeeId, runId])
   @@index([companyId])
@@ -1034,6 +1046,58 @@ model EmployeeDocument {
   @@index([companyId])
   @@index([employeeId])
   @@map("employee_documents")
+}
+
+/// Pre-built document letter templates for HR document generation
+model DocumentTemplate {
+  id          String                  @id @default(uuid())
+  companyId   String?
+  name        String
+  slug        String
+  description String?
+  category    DocumentTemplateCategory @default(OFFER_LETTER)
+  content     String                  /// HTML/Handlebars template content
+  docxFileUrl String?                 /// Optional .docx template file path
+  variables   Json?                   /// Pre-defined variable list for UI hinting
+  isDefault   Boolean                 @default(false)
+  isActive    Boolean                 @default(true)
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  company     Company?                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  documents   GeneratedDocument[]
+
+  @@unique([companyId, slug])
+  @@index([companyId])
+  @@index([category])
+  @@map("document_templates")
+}
+
+/// Generated/output documents (one per employee per generation)
+model GeneratedDocument {
+  id             String   @id @default(uuid())
+  companyId      String
+  employeeId     String
+  templateId     String
+  documentType   DocumentTemplateCategory
+  title          String
+  fileUrl        String   /// Path/URL to the generated PDF/docx file
+  fileType       String   @default("pdf")  /// pdf, docx, html
+  fileSize       Int?
+  variables      Json?    /// Snapshot of the variable values used at generation time
+  metadata       Json?    /// Additional context (reason, notes, etc.)
+  generatedById  String?
+  generatedAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  template       DocumentTemplate @relation(fields: [templateId], references: [id])
+
+  @@index([companyId])
+  @@index([employeeId])
+  @@index([templateId])
+  @@index([documentType])
+  @@index([generatedAt])
+  @@map("generated_documents")
 }
 
 model TaxDeclaration {
@@ -1246,20 +1310,27 @@ model CompanyFeatureFlag {
 
 /// Custom branding settings per company
 model CompanyBranding {
-  id             String   @id @default(uuid())
-  companyId      String   @unique
-  primaryColor   String   @default("#0B6E63")
-  secondaryColor String   @default("#10192B")
-  accentColor    String   @default("#4DB6A8")
-  logoUrl        String?
-  faviconUrl     String?
-  companyName    String?
-  customDomain   String?
-  emailFooter    String?
-  enabled        Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id                  String   @id @default(uuid())
+  companyId           String   @unique
+  primaryColor        String   @default("#0B6E63")
+  secondaryColor      String   @default("#10192B")
+  accentColor         String   @default("#4DB6A8")
+  logoUrl             String?
+  faviconUrl          String?
+  companyName         String?
+  customDomain        String?
+  emailFooter         String?
+  signatureImageUrl   String?  /// Uploaded signature image for documents & payslips
+  signatureEnabled    Boolean  @default(false)
+  signatureTitle      String?  /// e.g. "Authorized Signatory" or "HR Manager"
+  companyAddress      String?  /// Full address shown on documents
+  companyCity         String?
+  companyState        String?
+  companyPostalCode   String?
+  enabled             Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@map("company_branding")
 }
@@ -1400,6 +1471,8 @@ enum Gender {
 
 enum PayrollRunStatus {
   DRAFT
+  PENDING_APPROVAL
+  APPROVED
   PROCESSING
   COMPLETED
   CANCELLED
@@ -1467,6 +1540,19 @@ enum DocumentCategory {
   CONTRACT
   TAX_FORM
   MEDICAL
+  OTHER
+}
+
+enum DocumentTemplateCategory {
+  OFFER_LETTER
+  APPOINTMENT_LETTER
+  EXPERIENCE_LETTER
+  RELIEVING_LETTER
+  SALARY_CERTIFICATE
+  CONFIRMATION_LETTER
+  PROMOTION_LETTER
+  TRANSFER_LETTER
+  PAYSLIP
   OTHER
 }
 

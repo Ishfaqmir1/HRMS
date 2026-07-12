@@ -1,9 +1,10 @@
-import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { EssService } from './ess.service';
 import { UpdateMyProfileDto } from './dto/update-profile.dto';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { CreateRegularizationDto } from '../attendance-regularization/dto/attendance-regularization.dto';
+import { Response } from 'express';
 import { TenantId } from '../common/decorators/tenant.decorator';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { Permissions } from '../common/decorators/permissions.decorator';
@@ -59,6 +60,39 @@ export class EssController {
     return this.essService.getPayslip(user.employeeId!, id);
   }
 
+  @Get('payslips/:id/pdf')
+  @Permissions('payroll.read')
+  async downloadPayslipPdf(
+    @TenantId() companyId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    this.assertHasEmployeeProfile(user);
+    const result = await this.essService.downloadPayslipPdf(companyId, user.employeeId!, id);
+
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.setHeader('Content-Length', result.buffer.length.toString());
+    res.end(result.buffer);
+  }
+
+  @Get('payslips/download-all')
+  @Permissions('payroll.read')
+  async downloadAllPayslipsPdf(
+    @TenantId() companyId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res() res: Response,
+  ) {
+    this.assertHasEmployeeProfile(user);
+    const result = await this.essService.downloadAllPayslipsPdf(companyId, user.employeeId!);
+
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.setHeader('Content-Length', result.buffer.length.toString());
+    res.end(result.buffer);
+  }
+
   // ---- Leave History ----
 
   @Get('leave/history')
@@ -96,9 +130,9 @@ export class EssController {
 
   @Get('expenses')
   @Permissions('payroll.read')
-  myExpenses(@CurrentUser() user: AuthenticatedUser) {
+  myExpenses(@CurrentUser() user: AuthenticatedUser, @Query() query: PaginationQueryDto) {
     this.assertHasEmployeeProfile(user);
-    return this.essService.myExpenses(user.employeeId!);
+    return this.essService.myExpenses(user.employeeId!, query);
   }
 
   @Post('expenses')
@@ -116,12 +150,21 @@ export class EssController {
 
   @Get('loans')
   @Permissions('payroll.read')
-  myLoans(@CurrentUser() user: AuthenticatedUser) {
+  myLoans(@CurrentUser() user: AuthenticatedUser, @Query() query: PaginationQueryDto) {
     this.assertHasEmployeeProfile(user);
-    return this.essService.myLoans(user.employeeId!);
+    return this.essService.myLoans(user.employeeId!, query);
   }
 
-  // ---- Documents ----
+  // ---- Generated Documents (from Document Builder) ----
+
+  @Get('generated-documents')
+  @Permissions('employee.read')
+  myGeneratedDocuments(@TenantId() companyId: string, @CurrentUser() user: AuthenticatedUser, @Query() query: PaginationQueryDto) {
+    this.assertHasEmployeeProfile(user);
+    return this.essService.myGeneratedDocuments(companyId, user.employeeId!, query);
+  }
+
+  // ---- Documents (uploaded) ----
 
   @Get('documents')
   @Permissions('employee.read')
@@ -143,9 +186,9 @@ export class EssController {
 
   @Get('assets')
   @Permissions('employee.read')
-  myAssets(@CurrentUser() user: AuthenticatedUser) {
+  myAssets(@CurrentUser() user: AuthenticatedUser, @Query() query: PaginationQueryDto) {
     this.assertHasEmployeeProfile(user);
-    return this.essService.myAssets(user.employeeId!);
+    return this.essService.myAssets(user.employeeId!, query);
   }
 
   // ---- Attendance Regularization ----
@@ -172,9 +215,9 @@ export class EssController {
 
   @Get('training')
   @Permissions('employee.read')
-  myTraining(@CurrentUser() user: AuthenticatedUser) {
+  myTraining(@CurrentUser() user: AuthenticatedUser, @Query() query: PaginationQueryDto) {
     this.assertHasEmployeeProfile(user);
-    return this.essService.myTraining(user.employeeId!);
+    return this.essService.myTraining(user.employeeId!, query);
   }
 
   private assertHasEmployeeProfile(user: AuthenticatedUser) {

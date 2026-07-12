@@ -34,13 +34,17 @@ import { AssetsModule } from './assets/assets.module';
 import { TrainingModule } from './training/training.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { BillingModule } from './billing/billing.module';
+import { DocumentTemplatesModule } from './document-templates/document-templates.module';
 import { AttendanceSecurityModule } from './attendance-security/attendance-security.module';
 import { AttendanceRegularizationModule } from './attendance-regularization/attendance-regularization.module';
+import { UploadModule } from './upload/upload.module';
 import { AttendancePolicyModule } from './attendance-policy/attendance-policy.module';
 import { StatutoryComplianceModule } from './statutory-compliance/statutory-compliance.module';
+import { DesignationsModule } from './designations/designations.module';
 
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
+import { CsrfMiddleware } from './common/middleware/csrf.middleware';
 
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { SessionValidationGuard } from './common/guards/session-validation.guard';
@@ -88,8 +92,11 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     BillingModule,
     AttendancePolicyModule,
     AttendanceSecurityModule,
+    DocumentTemplatesModule,
     AttendanceRegularizationModule,
     StatutoryComplianceModule,
+    DesignationsModule,
+    UploadModule,
   ],
   providers: [
     // ──────────────────────────────────────────────────────────────────
@@ -122,6 +129,13 @@ export class AppModule implements NestModule {
     consumer
       .apply(RequestIdMiddleware, RequestLoggerMiddleware)
       .exclude({ path: 'health', method: RequestMethod.GET })
+      .forRoutes('*');
+
+    // CSRF middleware — protects all state-changing routes
+    // Uses double-submit cookie pattern (cookie + header must match)
+    // Public routes excluded — middleware checks exemptedPaths internally
+    consumer
+      .apply(CsrfMiddleware)
       .forRoutes('*');
   }
 }

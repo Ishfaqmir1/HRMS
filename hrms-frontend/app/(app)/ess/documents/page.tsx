@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap } from '@/lib/api-client';
-import { PaginatedResult } from '@/lib/types';
+import { PaginatedResult, GeneratedDocument, DOCUMENT_CATEGORY_LABELS, DOCUMENT_CATEGORY_COLORS } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input, Label, FieldError } from '@/components/ui/input';
@@ -15,7 +15,8 @@ import {
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Trash2, Download, Upload } from 'lucide-react';
+import { Eye, Download, Upload, FileText, Receipt, ChevronRight, Trash2 } from 'lucide-react';
+import Link from 'next/link';
 
 interface EmployeeDocument {
   id: string;
@@ -33,7 +34,7 @@ const DOC_CATEGORIES = [
   'CONTRACT', 'TAX_FORM', 'MEDICAL', 'OTHER',
 ] as const;
 
-const CATEGORY_LABELS: Record<string, string> = {
+const UPLOAD_CATEGORY_LABELS: Record<string, string> = {
   ID_PROOF: 'ID Proof', ADDRESS_PROOF: 'Address Proof', EDUCATION: 'Education',
   CERTIFICATION: 'Certification', CONTRACT: 'Contract', TAX_FORM: 'Tax Form',
   MEDICAL: 'Medical', OTHER: 'Other',
@@ -54,14 +55,41 @@ function fmtSize(bytes: number | null) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatDate(dateStr: string) {
+  return new Date(dateStr).toLocaleDateString('en-US', {
+    year: 'numeric', month: 'short', day: 'numeric',
+  });
+}
+
+function formatDateTime(dateStr: string) {
+  return new Date(dateStr).toLocaleString('en-US', {
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
 export default function DocumentsPage() {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
+  const [genPage, setGenPage] = useState(1);
+  const [upPage, setUpPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState<GeneratedDocument | null>(null);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['me', 'documents', page],
-    queryFn: () => unwrap<PaginatedResult<EmployeeDocument>>(api.get('/me/documents', { params: { page, limit: 20 } })),
+  // Generated documents
+  const { data: generatedData, isLoading: genLoading } = useQuery({
+    queryKey: ['me', 'generated-documents', genPage],
+    queryFn: () => unwrap<PaginatedResult<GeneratedDocument>>(
+      api.get('/me/generated-documents', { params: { page: genPage, limit: 10 } }),
+    ),
+  });
+
+  // Uploaded documents
+  const { data: uploadedData, isLoading: upLoading } = useQuery({
+    queryKey: ['me', 'documents', upPage],
+    queryFn: () => unwrap<PaginatedResult<EmployeeDocument>>(
+      api.get('/me/documents', { params: { page: upPage, limit: 5 } }),
+    ),
   });
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<CreateForm>({
@@ -83,67 +111,295 @@ export default function DocumentsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['me', 'documents'] }),
   });
 
+  const handlePreview = async (doc: GeneratedDocument) => {
+    setSelectedDoc(doc);
+    if (doc.fileType === 'html') {
+      setPreviewLoading(true);
+      try {
+        const res = await fetch(doc.fileUrl);
+        const html = await res.text();
+        setPreviewHtml(html);
+      } catch {
+        setPreviewHtml(null);
+      } finally {
+        setPreviewLoading(false);
+      }
+    } else {
+      setPreviewHtml(null);
+    }
+  };
+
+  const generatedDocs = generatedData?.items || [];
+  const uploadedDocs = uploadedData?.items || [];
+
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-6xl space-y-6">
+      {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="ledger-tab font-serif text-2xl font-semibold text-ink">My Documents</h1>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Upload size={14} /> Add Document
-        </Button>
+        <div>
+          <h1 className="font-serif text-2xl font-semibold text-ink">My Documents</h1>
+          <p className="mt-1 text-sm text-ink-faint">
+            View your letter documents, payslips, and uploaded files
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Link href="/ess/payslips">
+            <Button variant="outline" size="sm">
+              <Receipt size={14} /> View Payslips
+            </Button>
+          </Link>
+          <Button onClick={() => setCreateOpen(true)} size="sm">
+            <Upload size={14} /> Add Document
+          </Button>
+        </div>
       </div>
 
-      <Card>
-        <CardHeader><CardTitle>Uploaded Documents</CardTitle></CardHeader>
-        <CardContent>
-          {isLoading && <p className="text-sm text-ink-faint">Loading documents…</p>}
-          {data && (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Size</TableHead>
-                  <TableHead>Uploaded</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.items.map((doc) => (
-                  <TableRow key={doc.id}>
-                    <TableCell className="font-medium text-ink">{doc.name}</TableCell>
-                    <TableCell><Badge variant="default">{CATEGORY_LABELS[doc.category] || doc.category}</Badge></TableCell>
-                    <TableCell className="text-ink-soft">{fmtSize(doc.fileSize)}</TableCell>
-                    <TableCell className="text-ink-soft">
-                      {new Date(doc.uploadedAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer">
-                          <Button variant="ghost" size="sm"><Download size={14} /></Button>
-                        </a>
-                        <Button variant="ghost" size="sm" onClick={() => deleteMut.mutate(doc.id)}>
-                          <Trash2 size={14} className="text-danger" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {data.items.length === 0 && (
-                  <TableRow><TableCell colSpan={5} className="py-8 text-center text-ink-faint">No documents uploaded yet.</TableCell></TableRow>
-                )}
-              </TableBody>
-            </Table>
-          )}
-          <div className="mt-4 flex items-center justify-between text-sm text-ink-faint">
-            <span>Page {data?.meta.page || 1} of {Math.max(data?.meta.totalPages || 1, 1)}</span>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Previous</Button>
-              <Button variant="outline" size="sm" disabled={page >= (data?.meta.totalPages || 1)} onClick={() => setPage(p => p + 1)}>Next</Button>
+      {/* Stats */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Card>
+          <CardContent className="flex items-center gap-4 py-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10">
+              <FileText size={20} className="text-accent" />
             </div>
-          </div>
+            <div>
+              <p className="text-2xl font-semibold text-ink">{generatedData?.meta?.total || 0}</p>
+              <p className="text-xs text-ink-faint">Letters &amp; Certificates</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-center gap-4 py-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50">
+              <Receipt size={20} className="text-blue-600" />
+            </div>
+            <div>
+              <Link href="/ess/payslips" className="hover:underline">
+                <p className="text-2xl font-semibold text-ink">View</p>
+              </Link>
+              <p className="text-xs text-ink-faint">Payslips</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-center gap-4 py-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-50">
+              <Upload size={20} className="text-purple-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-semibold text-ink">{uploadedData?.meta?.total || 0}</p>
+              <p className="text-xs text-ink-faint">Uploaded Documents</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Generated Documents Section */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>
+            <span className="flex items-center gap-2">
+              <FileText size={16} className="text-accent" />
+              Letters &amp; Certificates
+            </span>
+          </CardTitle>
+          {genLoading && <span className="text-xs text-ink-faint">Loading…</span>}
+        </CardHeader>
+        <CardContent>
+          {generatedDocs.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-8">
+              <FileText size={32} className="text-ink-faint" />
+              <p className="text-sm text-ink-faint">No letters or certificates generated for you yet.</p>
+              <p className="text-xs text-ink-faint">Ask your HR team to generate documents via the Document Builder.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {generatedDocs.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="flex items-center justify-between rounded-lg border border-border px-4 py-3 transition-all hover:shadow-sm hover:border-accent/20"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <FileText size={16} className="shrink-0 text-accent" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-ink truncate">{doc.title}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-medium ${DOCUMENT_CATEGORY_COLORS[doc.documentType as keyof typeof DOCUMENT_CATEGORY_COLORS] || DOCUMENT_CATEGORY_COLORS.OTHER}`}>
+                          {DOCUMENT_CATEGORY_LABELS[doc.documentType as keyof typeof DOCUMENT_CATEGORY_LABELS] || doc.documentType}
+                        </span>
+                        <Badge variant="default" className="uppercase text-[10px]">{doc.fileType}</Badge>
+                        <span className="text-[10px] text-ink-faint">{formatDate(doc.generatedAt)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <Button variant="ghost" size="sm" onClick={() => handlePreview(doc)} title="Preview">
+                      <Eye size={14} />
+                    </Button>
+                    <a
+                      href={`/api/v1/document-templates/generated/${doc.id}/download`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Button variant="ghost" size="sm" title="Download">
+                        <Download size={14} />
+                      </Button>
+                    </a>
+                  </div>
+                </div>
+              ))}
+              {(generatedData?.meta?.totalPages || 1) > 1 && (
+                <div className="flex items-center justify-between pt-3 text-xs text-ink-faint">
+                  <span>Page {generatedData?.meta.page || 1} of {Math.max(generatedData?.meta.totalPages || 1, 1)}</span>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" disabled={genPage <= 1} onClick={() => setGenPage(p => p - 1)}>Previous</Button>
+                    <Button variant="outline" size="sm" disabled={genPage >= (generatedData?.meta.totalPages || 1)} onClick={() => setGenPage(p => p + 1)}>Next</Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
+      {/* Uploaded Documents Section */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>
+            <span className="flex items-center gap-2">
+              <Upload size={16} className="text-purple-600" />
+              Uploaded Documents
+            </span>
+          </CardTitle>
+          <Button variant="ghost" size="sm" onClick={() => setCreateOpen(true)}>
+            <Upload size={12} /> Add
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {upLoading && <p className="text-sm text-ink-faint">Loading…</p>}
+          {uploadedData && (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Uploaded</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {uploadedDocs.map((doc) => (
+                    <TableRow key={doc.id}>
+                      <TableCell className="font-medium text-ink">{doc.name}</TableCell>
+                      <TableCell>
+                        <Badge variant="default">{UPLOAD_CATEGORY_LABELS[doc.category] || doc.category}</Badge>
+                      </TableCell>
+                      <TableCell className="text-ink-soft text-xs">
+                        {new Date(doc.uploadedAt).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer">
+                            <Button variant="ghost" size="sm"><Download size={14} /></Button>
+                          </a>
+                          <Button variant="ghost" size="sm" onClick={() => deleteMut.mutate(doc.id)}>
+                            <Trash2 size={14} className="text-danger" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {uploadedDocs.length === 0 && (
+                    <TableRow><TableCell colSpan={4} className="py-6 text-center text-ink-faint">No uploaded documents yet.</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Quick Links */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Link href="/ess/payslips">
+          <Card className="cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5">
+            <CardContent className="flex items-center gap-3 py-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50">
+                <Receipt size={20} className="text-blue-600" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-ink">View Payslips</p>
+                <p className="text-xs text-ink-faint">Monthly salary slips</p>
+              </div>
+              <ChevronRight size={16} className="text-ink-faint" />
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/ess/attendance">
+          <Card className="cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5">
+            <CardContent className="flex items-center gap-3 py-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50">
+                <Receipt size={20} className="text-amber-600" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-ink">Attendance Calendar</p>
+                <p className="text-xs text-ink-faint">View your attendance records</p>
+              </div>
+              <ChevronRight size={16} className="text-ink-faint" />
+            </CardContent>
+          </Card>
+        </Link>
+      </div>
+
+      {/* Preview Dialog */}
+      <Dialog open={!!selectedDoc} onOpenChange={(o) => { if (!o) { setSelectedDoc(null); setPreviewHtml(null); }}}>
+        <DialogContent className="sm:max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{selectedDoc?.title}</DialogTitle>
+            <DialogDescription>
+              {selectedDoc?.generatedAt && `Generated ${formatDateTime(selectedDoc.generatedAt)}`}
+            </DialogDescription>
+          </DialogHeader>
+
+          {previewLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-accent" />
+            </div>
+          ) : previewHtml ? (
+            <div className="rounded-lg border border-border bg-white p-6 shadow-sm">
+              <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+            </div>
+          ) : selectedDoc?.fileUrl ? (
+            <div className="flex flex-col items-center gap-4 py-8">
+              <p className="text-sm text-ink-faint">
+                Preview not available for {selectedDoc.fileType.toUpperCase()} files.
+              </p>
+              <a
+                href={`/api/v1/document-templates/generated/${selectedDoc.id}/download`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Button><Download size={14} /> Download {selectedDoc.fileType.toUpperCase()}</Button>
+              </a>
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            {selectedDoc && (
+              <a
+                href={`/api/v1/document-templates/generated/${selectedDoc.id}/download`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Button variant="outline"><Download size={14} /> Download</Button>
+              </a>
+            )}
+            <Button onClick={() => { setSelectedDoc(null); setPreviewHtml(null); }}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Document Dialog */}
       <Dialog open={createOpen} onOpenChange={o => !o && setCreateOpen(false)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -160,7 +416,7 @@ export default function DocumentsPage() {
               <Label>Category</Label>
               <select {...register('category')} className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm">
                 {DOC_CATEGORIES.map(c => (
-                  <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
+                  <option key={c} value={c}>{UPLOAD_CATEGORY_LABELS[c]}</option>
                 ))}
               </select>
             </div>

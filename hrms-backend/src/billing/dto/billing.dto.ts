@@ -56,4 +56,15 @@ export class UpdateCompanyBrandingDto {
   @ApiPropertyOptional() @IsOptional() @IsString() customDomain?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() emailFooter?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() enabled?: boolean;
+
+  // Signature fields
+  @ApiPropertyOptional() @IsOptional() @IsString() signatureImageUrl?: string;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() signatureEnabled?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsString() signatureTitle?: string;
+
+  // Company address fields
+  @ApiPropertyOptional() @IsOptional() @IsString() companyAddress?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() companyCity?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() companyState?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() companyPostalCode?: string;
 }

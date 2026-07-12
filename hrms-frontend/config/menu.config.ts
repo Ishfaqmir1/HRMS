@@ -1,8 +1,9 @@
 import {
   LayoutDashboard, Users, Clock, CalendarDays, Timer, Sun,
-  MapPin, Shield, Building2, DollarSign, Briefcase, BarChart3,
+  MapPin, Shield, Building2, Building, DollarSign, Briefcase, BarChart3,
   Smartphone, FileText, Handshake, GraduationCap, UserCheck,
-  Banknote, Receipt, Home, UserCircle, FileWarning,
+  Banknote, Receipt, Home, UserCircle, FileWarning, Upload,
+  FileSpreadsheet, ScrollText, Printer, Palette, Play,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -162,13 +163,21 @@ export const MENU_CONFIG: MenuSection[] = [
         label: 'Employees',
         icon: Users,
         permissions: ['employee.read'],
+        roles: ['hr-manager', 'hr', 'department-head', 'company-owner'],
         showOnMobile: true,
+      },
+      {
+        href: '/employees/import',
+        label: 'Bulk Import',
+        icon: Upload,
+        permissions: ['employee.create'],
       },
       {
         href: '/attendance',
         label: 'Attendance',
         icon: Clock,
         permissions: ['attendance.read'],
+        roles: ['hr-manager', 'hr', 'department-head', 'company-owner'],
         showOnMobile: true,
       },
       {
@@ -182,6 +191,7 @@ export const MENU_CONFIG: MenuSection[] = [
         label: 'Leave',
         icon: CalendarDays,
         permissions: ['leave.read'],
+        roles: ['hr-manager', 'hr', 'department-head', 'company-owner'],
         showOnMobile: true,
       },
     ],
@@ -219,6 +229,37 @@ export const MENU_CONFIG: MenuSection[] = [
     ],
   },
 
+  // ── Documents & Letters ────────────────────────────────────
+  {
+    title: 'Documents',
+    items: [
+      {
+        href: '/documents',
+        label: 'Document Builder',
+        icon: FileSpreadsheet,
+        permissions: ['documents.read'],
+      },
+      {
+        href: '/documents/templates',
+        label: 'Templates',
+        icon: ScrollText,
+        permissions: ['documents.read'],
+      },
+      {
+        href: '/documents/generate',
+        label: 'Generate Documents',
+        icon: Printer,
+        permissions: ['documents.create'],
+      },
+      {
+        href: '/documents/generated',
+        label: 'Generated Documents',
+        icon: FileText,
+        permissions: ['documents.read'],
+      },
+    ],
+  },
+
   // ── Payroll ────────────────────────────────────────────────
   {
     title: 'Payroll',
@@ -228,6 +269,12 @@ export const MENU_CONFIG: MenuSection[] = [
         href: '/payroll',
         label: 'Dashboard',
         icon: Banknote,
+        permissions: ['payroll.read'],
+      },
+      {
+        href: '/payroll/runs',
+        label: 'Payroll Runs',
+        icon: Play,
         permissions: ['payroll.read'],
       },
       {
@@ -258,6 +305,12 @@ export const MENU_CONFIG: MenuSection[] = [
         href: '/payroll/reimbursements',
         label: 'Reimbursements',
         icon: DollarSign,
+        permissions: ['payroll.read'],
+      },
+      {
+        href: '/payroll/reimbursement-categories',
+        label: 'Reimbursement Categories',
+        icon: Receipt,
         permissions: ['payroll.read'],
       },
     ],
@@ -293,22 +346,50 @@ export const MENU_CONFIG: MenuSection[] = [
         permissions: ['company.update'],
       },
       {
+        href: '/departments',
+        label: 'Departments',
+        icon: Building,
+        permissions: ['department.read'],
+      },
+      {
+        href: '/designations',
+        label: 'Designations',
+        icon: UserCheck,
+        permissions: ['employee.read'],
+        roles: ['hr-manager', 'company-owner'],
+      },
+      {
+        href: '/training',
+        label: 'Training Programs',
+        icon: GraduationCap,
+        permissions: ['company.update'],
+        feature: 'training',
+      },
+      {
         href: '/shifts',
         label: 'Shifts',
         icon: Timer,
         permissions: ['shift.read'],
+        roles: ['hr-manager', 'company-owner'],
       },
       {
         href: '/holidays',
         label: 'Holidays',
         icon: Sun,
         permissions: ['holiday.read'],
+        roles: ['hr-manager', 'company-owner'],
       },
       {
         href: '/branches',
         label: 'Branches & Geo-Fencing',
         icon: MapPin,
         permissions: ['branch.read'],
+      },
+          {
+        href: '/settings/branding',
+        label: 'Branding Settings',
+        icon: Palette,
+        permissions: ['company.update'],
       },
       {
         href: '/roles',
@@ -361,12 +442,12 @@ export const ROUTE_GUARDS: RouteGuard[] = [
   // Management routes
   { path: '/dashboard', permissions: ['employee.read'] },
   { path: '/analytics', permissions: ['employee.read'] },
-  { path: '/employees', permissions: ['employee.read'] },
-  { path: '/attendance', permissions: ['attendance.read'] },
+  { path: '/employees', permissions: ['employee.read'], roles: ['hr-manager', 'hr', 'department-head', 'company-owner'] },
+  { path: '/attendance', permissions: ['attendance.read'], roles: ['hr-manager', 'hr', 'department-head', 'company-owner'] },
   { path: '/attendance/regularization', permissions: ['attendance.approve'] },
   { path: '/attendance/security', permissions: ['company.update'] },
   { path: '/attendance/policies', permissions: ['company.update'] },
-  { path: '/leave', permissions: ['leave.read'] },
+  { path: '/leave', permissions: ['leave.read'], roles: ['hr-manager', 'hr', 'department-head', 'company-owner'] },
 
   // ESS routes
   { path: '/ess', permissions: ['employee.read'] },
@@ -376,11 +457,19 @@ export const ROUTE_GUARDS: RouteGuard[] = [
 
   // Payroll
   { path: '/payroll', permissions: ['payroll.read'], feature: 'payroll' },
+  { path: '/payroll/runs', permissions: ['payroll.read'], feature: 'payroll' },
+
+  // Documents & Letters
+  { path: '/documents', permissions: ['documents.read'] },
 
   // Admin routes
   { path: '/billing', permissions: ['company.read'] },
-  { path: '/shifts', permissions: ['shift.read'] },
-  { path: '/holidays', permissions: ['holiday.read'] },
+  { path: '/settings/branding', permissions: ['company.update'] },
+  { path: '/departments', permissions: ['department.read'] },
+  { path: '/designations', permissions: ['employee.read'], roles: ['hr-manager', 'company-owner'] },
+  { path: '/training', permissions: ['company.update'], feature: 'training' },
+  { path: '/shifts', permissions: ['shift.read'], roles: ['hr-manager', 'company-owner'] },
+  { path: '/holidays', permissions: ['holiday.read'], roles: ['hr-manager', 'company-owner'] },
   { path: '/branches', permissions: ['branch.read'] },
   { path: '/roles', roles: ['super-admin', 'company-owner', 'hr-manager'] },
 ];

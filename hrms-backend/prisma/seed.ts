@@ -17,6 +17,7 @@ const MODULES: Record<string, string[]> = {
   holiday: ['create', 'read', 'update', 'delete'],
   attendance: ['create', 'read', 'update', 'delete', 'approve'],
   leavetype: ['create', 'read', 'update', 'delete'],
+  documents: ['create', 'read', 'update', 'delete'],
   leavebalance: ['read', 'update'],
   leave: ['create', 'read', 'update', 'delete', 'approve'],
   payroll: ['create', 'read', 'update', 'delete', 'approve', 'run'],
@@ -49,6 +50,8 @@ const ROLE_PERMISSIONS: Record<SystemRole, string[] | 'ALL'> = {
     'leavebalance.read', 'leavebalance.update',
     'payroll.read', 'payroll.create',
     'recruitment.read',
+    'company.update',
+    'documents.read', 'documents.create',
   ],
   PAYROLL_MANAGER: [
     'payroll.create', 'payroll.read', 'payroll.update', 'payroll.approve', 'payroll.run',
@@ -659,6 +662,13 @@ async function main() {
         },
       });
       createdEmployeeIds.push(employee.id);
+    } else {
+      // Employee already exists — grab their ID for downstream data creation
+      const employee = await prisma.employee.findFirst({
+        where: { companyId: demoCompany.id, userId: user.id, deletedAt: null },
+        select: { id: true },
+      });
+      if (employee) createdEmployeeIds.push(employee.id);
     }
   }
 
@@ -1193,17 +1203,29 @@ async function main() {
   const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
   const prevMonthYear = currentMonth === 1 ? currentYear - 1 : currentYear;
 
-  const completedRun = await prisma.payrollRun.upsert({
-    where: { companyId_month_year: { companyId: demoCompany.id, month: prevMonth, year: prevMonthYear } },
-    update: {},
-    create: {
-      id: '00000000-0000-0000-0000-000000000040',
-      companyId: demoCompany.id, month: prevMonth, year: prevMonthYear,
-      status: 'COMPLETED', processedAt: new Date(),
-      totalGross: 0, totalDeductions: 0, totalNet: 0, employeeCount: 0,
-      notes: 'Regular monthly payroll',
-    },
+  // Use findFirst + update/create instead of upsert due to unique constraint change
+  let completedRun = await prisma.payrollRun.findFirst({
+    where: { companyId: demoCompany.id, month: prevMonth, year: prevMonthYear, version: 1 },
   });
+
+  if (!completedRun) {
+    completedRun = await prisma.payrollRun.create({
+      data: {
+        id: '00000000-0000-0000-0000-000000000040',
+        companyId: demoCompany.id,
+        month: prevMonth,
+        year: prevMonthYear,
+        version: 1,
+        status: 'COMPLETED',
+        processedAt: new Date(),
+        totalGross: 0,
+        totalDeductions: 0,
+        totalNet: 0,
+        employeeCount: 0,
+        notes: 'Regular monthly payroll',
+      },
+    });
+  }
 
   // --- Payslips for completed run ---
   if (createdEmployeeIds.length > 0) {
@@ -1448,6 +1470,90 @@ async function main() {
         enabled: false,
       },
     });
+  }
+
+  // ====================================================================
+  // Seed default document templates
+  // ====================================================================
+  console.log('Seeding default document templates...');
+  const { DocumentTemplatesService } = await import('../src/document-templates/document-templates.service');
+  // We can't instantiate the full service here, so we create default templates directly
+  const defaultTemplates = [
+    {
+      name: 'Offer Letter',
+      slug: 'offer-letter',
+      category: 'OFFER_LETTER',
+      isDefault: true,
+      content: `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;color:#222;max-width:700px;margin:0 auto;padding:20px}.header{text-align:center;border-bottom:2px solid #0B6E63;padding-bottom:15px;margin-bottom:25px}.header h1{color:#0B6E63;font-size:22pt}.subject{font-weight:600;margin:20px 0}.signature{margin-top:40px;border-top:1px solid #ddd;padding-top:20px}</style></head><body><div class="header"><h1>{{companyName}}</h1></div><p>Dear <strong>{{candidateName}}</strong>,</p><p>We are delighted to offer you the position of <strong>{{position}}</strong> in the <strong>{{department}}</strong> department.</p><p>Your employment will commence on <strong>{{joiningDate}}</strong>.</p><p>Annual CTC: <strong>{{salary}}</strong></p><div class="signature"><p>Sincerely,</p><p><strong>{{hrName}}</strong></p></div></body></html>`,
+      description: 'Standard employment offer letter',
+      variables: ['candidateName', 'position', 'department', 'joiningDate', 'salary', 'companyName', 'hrName'],
+    },
+    {
+      name: 'Appointment Letter',
+      slug: 'appointment-letter',
+      category: 'APPOINTMENT_LETTER',
+      isDefault: true,
+      content: `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;color:#222;max-width:700px;margin:0 auto;padding:20px}.header{text-align:center;border-bottom:2px solid #10192B;padding-bottom:15px;margin-bottom:25px}.header h1{color:#10192B;font-size:22pt}.subject{font-weight:600;margin:20px 0}.signature{margin-top:40px;border-top:1px solid #ddd;padding-top:20px}</style></head><body><div class="header"><h1>{{companyName}}</h1></div><p>Dear <strong>{{employeeName}}</strong>,</p><p>We confirm your appointment as <strong>{{position}}</strong> in the <strong>{{department}}</strong> department.</p><p>Date of Joining: <strong>{{joiningDate}}</strong></p><p>Reporting Manager: <strong>{{reportingManager}}</strong></p><div class="signature"><p>Yours sincerely,</p><p><strong>{{hrName}}</strong></p></div></body></html>`,
+      description: 'Confirms appointment with terms of employment',
+      variables: ['employeeName', 'position', 'department', 'joiningDate', 'employmentType', 'probationPeriod', 'reportingManager', 'companyName', 'hrName'],
+    },
+    {
+      name: 'Experience Letter',
+      slug: 'experience-letter',
+      category: 'EXPERIENCE_LETTER',
+      isDefault: true,
+      content: `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;color:#222;max-width:700px;margin:0 auto;padding:20px}.header{text-align:center;border-bottom:2px solid #4DB6A8;padding-bottom:15px;margin-bottom:25px}.header h1{color:#4DB6A8;font-size:22pt}</style></head><body><div class="header"><h1>{{companyName}}</h1></div><p>TO WHOM IT MAY CONCERN</p><p>This certifies that <strong>{{employeeName}}</strong> was employed from <strong>{{startDate}}</strong> to <strong>{{endDate}}</strong> as <strong>{{position}}</strong>.</p><p>We wish them the best in future endeavors.</p><div class="signature"><p>Sincerely,</p><p><strong>{{hrName}}</strong></p></div></body></html>`,
+      description: 'Certificate of experience upon exit',
+      variables: ['employeeName', 'position', 'department', 'startDate', 'endDate', 'companyName', 'hrName'],
+    },
+    {
+      name: 'Relieving Letter',
+      slug: 'relieving-letter',
+      category: 'RELIEVING_LETTER',
+      isDefault: true,
+      content: `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;color:#222;max-width:700px;margin:0 auto;padding:20px}.header{text-align:center;border-bottom:2px solid #10192B;padding-bottom:15px;margin-bottom:25px}.header h1{color:#10192B;font-size:22pt}.subject{font-weight:600;margin:20px 0}.signature{margin-top:40px;border-top:1px solid #ddd;padding-top:20px}</style></head><body><div class="header"><h1>{{companyName}}</h1></div><p>Dear <strong>{{employeeName}}</strong>,</p><p>We refer to your resignation and confirm you are relieved from duties effective <strong>{{lastWorkingDay}}</strong>.</p><p>You worked as <strong>{{position}}</strong> in the <strong>{{department}}</strong> department.</p><div class="signature"><p>Yours sincerely,</p><p><strong>{{hrName}}</strong></p></div></body></html>`,
+      description: 'Official release letter upon resignation',
+      variables: ['employeeName', 'position', 'department', 'lastWorkingDay', 'resignationDate', 'companyName', 'hrName'],
+    },
+    {
+      name: 'Salary Certificate',
+      slug: 'salary-certificate',
+      category: 'SALARY_CERTIFICATE',
+      isDefault: true,
+      content: `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;color:#222;max-width:700px;margin:0 auto;padding:20px}.header{text-align:center;border-bottom:2px solid #0B6E63;padding-bottom:15px;margin-bottom:25px}.header h1{color:#0B6E63;font-size:22pt}</style></head><body><div class="header"><h1>{{companyName}}</h1></div><p>This certifies that <strong>{{employeeName}}</strong> is employed as <strong>{{position}}</strong>.</p><p><strong>Annual CTC: {{totalCTC}}</strong></p><div class="signature"><p>Authorized Signatory</p><p><strong>{{hrName}}</strong></p></div></body></html>`,
+      description: 'Proof of income showing salary breakdown',
+      variables: ['employeeName', 'position', 'department', 'basicSalary', 'totalCTC', 'effectiveDate', 'companyName', 'hrName'],
+    },
+    {
+      name: 'Confirmation Letter',
+      slug: 'confirmation-letter',
+      category: 'CONFIRMATION_LETTER',
+      isDefault: true,
+      content: `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;color:#222;max-width:700px;margin:0 auto;padding:20px}.header{text-align:center;border-bottom:2px solid #0B6E63;padding-bottom:15px;margin-bottom:25px}.header h1{color:#0B6E63;font-size:22pt}</style></head><body><div class="header"><h1>{{companyName}}</h1></div><p>Dear <strong>{{employeeName}}</strong>,</p><p>Congratulations! We are pleased to confirm your employment with <strong>{{companyName}}</strong> effective <strong>{{effectiveDate}}</strong>.</p><p>During your probation, you have demonstrated the skills and dedication we value. We look forward to your continued contributions.</p><div class="signature"><p>Sincerely,</p><p><strong>{{hrName}}</strong></p></div></body></html>`,
+      description: 'Confirms permanent employment after probation',
+      variables: ['employeeName', 'position', 'department', 'effectiveDate', 'companyName', 'hrName'],
+    },
+  ];
+
+  for (const tmpl of defaultTemplates) {
+    const exists = await prisma.documentTemplate.findFirst({
+      where: { companyId: demoCompany.id, slug: tmpl.slug },
+    });
+    if (!exists) {
+      await prisma.documentTemplate.create({
+        data: {
+          companyId: demoCompany.id,
+          name: tmpl.name,
+          slug: tmpl.slug,
+          category: tmpl.category as any,
+          content: tmpl.content,
+          description: tmpl.description,
+          variables: tmpl.variables,
+          isDefault: tmpl.isDefault,
+        },
+      });
+      console.log(`  Created template: ${tmpl.name}`);
+    }
   }
 
   console.log('---------------------------------------------');

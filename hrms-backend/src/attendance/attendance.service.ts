@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AttendanceSource } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisCacheService } from '../redis/redis-cache.service';
 import { GeoFenceService } from '../geo-fence/geo-fence.service';
 import { AttendanceSecurityService } from '../attendance-security/attendance-security.service';
 import { AttendancePolicyService } from '../attendance-policy/attendance-policy.service';
@@ -11,6 +12,9 @@ import {
   UpdateAttendanceDto,
   StartBreakDto,
   EndBreakDto,
+  AttendanceTrendQueryDto,
+  DepartmentSummaryQueryDto,
+  AttendanceCsvQueryDto,
 } from './dto/attendance.dto';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 
@@ -35,12 +39,23 @@ function parseTimeToMinutes(timeStr: string): number {
   return h * 60 + (m || 0);
 }
 
+/** Escape a string value for safe CSV output (double-quote wrapping and escaping). */
+function escapeCsv(val: string): string {
+  if (val === '') return '';
+  // If the value contains commas, quotes, or newlines, wrap in double quotes and escape inner quotes
+  if (val.includes(',') || val.includes('"') || val.includes('\n') || val.includes('\r')) {
+    return `"${val.replace(/"/g, '""')}"`;
+  }
+  return val;
+}
+
 @Injectable()
 export class AttendanceService {
   private readonly logger = new Logger(AttendanceService.name);
 
   constructor(
     private prisma: PrismaService,
+    private cache: RedisCacheService,
     private geoFenceService: GeoFenceService,
     private securityService: AttendanceSecurityService,
     private policyService: AttendancePolicyService,
@@ -271,6 +286,9 @@ export class AttendanceService {
       });
     }
 
+    // Invalidate dashboard cache for this employee
+    this.cache.delPattern(`dashboard:${companyId}:${employeeId}*`).catch(() => {});
+
     // Log successful clock-in
     await this.securityService.logSecurityEvent(companyId, employeeId, {
       action: 'CLOCK_IN',
@@ -383,6 +401,9 @@ export class AttendanceService {
         },
       });
     }
+
+    // Invalidate dashboard cache for this employee
+    this.cache.delPattern(`dashboard:${companyId}:${employeeId}*`).catch(() => {});
 
     await this.securityService.logSecurityEvent(companyId, employeeId, {
       action: 'CLOCK_OUT',
@@ -534,10 +555,15 @@ export class AttendanceService {
     query: PaginationQueryDto,
     filters: { employeeId?: string; departmentId?: string; from?: string; to?: string } = {},
   ) {
+    const employeeFilter: any = { deletedAt: null };
+    if (filters.departmentId) {
+      employeeFilter.departmentId = filters.departmentId;
+    }
+
     const where = {
       companyId,
+      employee: employeeFilter,
       ...(filters.employeeId && { employeeId: filters.employeeId }),
-      ...(filters.departmentId && { employee: { departmentId: filters.departmentId } }),
       ...((filters.from || filters.to) && {
         date: {
           ...(filters.from && { gte: startOfDay(new Date(filters.from)) }),
@@ -617,5 +643,351 @@ export class AttendanceService {
     await this.findOne(companyId, id);
     await this.prisma.attendanceRecord.delete({ where: { id } });
     return { message: 'Attendance record removed.' };
+  }
+
+  // ==================================================================
+  // Attendance Analytics & Reports
+  // ==================================================================
+
+  /**
+   * Attendance trend report — aggregates attendance data by day or month
+   * over a given date range, split by status.
+   */
+  async getTrendReport(
+    companyId: string,
+    query: AttendanceTrendQueryDto,
+  ): Promise<{
+    period: { from: string; to: string };
+    granularity: 'day' | 'month';
+    data: Array<{
+      label: string;
+      date: string;
+      present: number;
+      absent: number;
+      late: number;
+      halfDay: number;
+      onLeave: number;
+      totalRecords: number;
+      avgWorkedMinutes: number;
+      totalOvertimeMinutes: number;
+    }>;
+  }> {
+    const fromDate = new Date(query.from + 'T00:00:00.000Z');
+    const toDate = new Date(query.to + 'T23:59:59.999Z');
+    const granularity = query.granularity ?? 'month';
+
+    // Decide date truncation based on granularity
+    const dateTrunc = granularity === 'day' ? 'day' : 'month';
+
+    // Use raw SQL for efficient aggregation at database level
+    const whereClause = query.departmentId
+      ? `WHERE ar."companyId" = $1 AND ar.date >= $2 AND ar.date <= $3 AND e."departmentId" = $4`
+      : `WHERE ar."companyId" = $1 AND ar.date >= $2 AND ar.date <= $3`;
+
+    const params: any[] = [companyId, fromDate, toDate];
+    if (query.departmentId) params.push(query.departmentId);
+
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<{
+        date_label: string;
+        present: bigint;
+        absent: bigint;
+        late: bigint;
+        half_day: bigint;
+        on_leave: bigint;
+        total_count: bigint;
+        avg_worked: number | null;
+        overtime_sum: number | null;
+      }>
+    >(
+      `SELECT
+        DATE_TRUNC('${dateTrunc}', ar.date)::text AS date_label,
+        COUNT(*) FILTER (WHERE ar.status = 'PRESENT')::int AS present,
+        COUNT(*) FILTER (WHERE ar.status = 'ABSENT')::int AS absent,
+        COUNT(*) FILTER (WHERE ar.status = 'LATE')::int AS late,
+        COUNT(*) FILTER (WHERE ar.status = 'HALF_DAY')::int AS half_day,
+        COUNT(*) FILTER (WHERE ar.status = 'ON_LEAVE')::int AS on_leave,
+        COUNT(*)::int AS total_count,
+        ROUND(AVG(ar."workedMinutes") FILTER (WHERE ar."workedMinutes" IS NOT NULL))::int AS avg_worked,
+        COALESCE(SUM(ar."overtimeMinutes")::int, 0) AS overtime_sum
+      FROM attendance_records ar
+      LEFT JOIN employees e ON e.id = ar."employeeId"
+      ${whereClause}
+      GROUP BY date_label
+      ORDER BY date_label`,
+      ...params,
+    );
+
+    const data = rows.map((row) => ({
+      label: row.date_label,
+      date: row.date_label,
+      present: Number(row.present),
+      absent: Number(row.absent),
+      late: Number(row.late),
+      halfDay: Number(row.half_day),
+      onLeave: Number(row.on_leave),
+      totalRecords: Number(row.total_count),
+      avgWorkedMinutes: Math.round(row.avg_worked ?? 0),
+      totalOvertimeMinutes: Number(row.overtime_sum ?? 0),
+    }));
+
+    return {
+      period: { from: query.from, to: query.to },
+      granularity,
+      data,
+    };
+  }
+
+  /**
+   * Department attendance summary — shows attendance stats grouped by
+   * department for a given date range.
+   */
+  async getDepartmentSummary(
+    companyId: string,
+    query: DepartmentSummaryQueryDto,
+  ): Promise<{
+    period: { from: string; to: string };
+    departments: Array<{
+      departmentId: string | null;
+      departmentName: string;
+      employeeCount: number;
+      present: number;
+      absent: number;
+      late: number;
+      halfDay: number;
+      onLeave: number;
+      totalAttendanceDays: number;
+      avgWorkedMinutes: number;
+      attendanceRate: number;
+    }>;
+  }> {
+    const fromDate = new Date(query.from + 'T00:00:00.000Z');
+    const toDate = new Date(query.to + 'T23:59:59.999Z');
+
+    // Get all active departments with employee counts
+    const departments = await this.prisma.department.findMany({
+      where: { companyId, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        _count: { select: { employees: { where: { deletedAt: null, status: { not: 'TERMINATED' } } } } },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    // Also include "Unassigned" employees (those with no department)
+    const unassignedCount = await this.prisma.employee.count({
+      where: { companyId, departmentId: null, deletedAt: null, status: { not: 'TERMINATED' } },
+    });
+
+    // Get attendance aggregation by department using raw SQL
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<{
+        dept_id: string | null;
+        present: bigint;
+        absent: bigint;
+        late: bigint;
+        half_day: bigint;
+        on_leave: bigint;
+        total_count: bigint;
+        avg_worked: number | null;
+      }>
+    >(
+      `SELECT
+        e."departmentId" AS dept_id,
+        COUNT(*) FILTER (WHERE ar.status = 'PRESENT')::int AS present,
+        COUNT(*) FILTER (WHERE ar.status = 'ABSENT')::int AS absent,
+        COUNT(*) FILTER (WHERE ar.status = 'LATE')::int AS late,
+        COUNT(*) FILTER (WHERE ar.status = 'HALF_DAY')::int AS half_day,
+        COUNT(*) FILTER (WHERE ar.status = 'ON_LEAVE')::int AS on_leave,
+        COUNT(*)::int AS total_count,
+        ROUND(AVG(ar."workedMinutes") FILTER (WHERE ar."workedMinutes" IS NOT NULL))::int AS avg_worked
+      FROM attendance_records ar
+      INNER JOIN employees e ON e.id = ar."employeeId"
+      WHERE ar."companyId" = $1 AND ar.date >= $2 AND ar.date <= $3
+      GROUP BY e."departmentId"
+      ORDER BY e."departmentId"`,
+      companyId,
+      fromDate,
+      toDate,
+    );
+
+    // Build lookup map from dept_id → stats
+    const deptStats = new Map<
+      string | null,
+      { present: number; absent: number; late: number; halfDay: number; onLeave: number; totalCount: number; avgWorked: number }
+    >();
+    for (const row of rows) {
+      deptStats.set(row.dept_id, {
+        present: Number(row.present),
+        absent: Number(row.absent),
+        late: Number(row.late),
+        halfDay: Number(row.half_day),
+        onLeave: Number(row.on_leave),
+        totalCount: Number(row.total_count),
+        avgWorked: Math.round(row.avg_worked ?? 0),
+      });
+    }
+
+    const departmentSummaries: Array<{
+      departmentId: string | null;
+      departmentName: string;
+      employeeCount: number;
+      present: number;
+      absent: number;
+      late: number;
+      halfDay: number;
+      onLeave: number;
+      totalAttendanceDays: number;
+      avgWorkedMinutes: number;
+      attendanceRate: number;
+    }> = departments.map((dept) => {
+      const stats = deptStats.get(dept.id) ?? {
+        present: 0, absent: 0, late: 0, halfDay: 0, onLeave: 0,
+        totalCount: 0, avgWorked: 0,
+      };
+      const attended = stats.present + stats.late + stats.halfDay;
+      const totalDays = stats.totalCount || 1;
+      const attendanceRate = Math.round((attended / totalDays) * 100);
+
+      return {
+        departmentId: dept.id,
+        departmentName: dept.name,
+        employeeCount: dept._count.employees,
+        present: stats.present,
+        absent: stats.absent,
+        late: stats.late,
+        halfDay: stats.halfDay,
+        onLeave: stats.onLeave,
+        totalAttendanceDays: stats.totalCount,
+        avgWorkedMinutes: stats.avgWorked,
+        attendanceRate,
+      };
+    });
+
+    // Add unassigned employees if any have records
+    if (unassignedCount > 0) {
+      const unassignedStats = deptStats.get(null) ?? {
+        present: 0, absent: 0, late: 0, halfDay: 0, onLeave: 0,
+        totalCount: 0, avgWorked: 0,
+      };
+      const attended = unassignedStats.present + unassignedStats.late + unassignedStats.halfDay;
+      const totalDays = unassignedStats.totalCount || 1;
+      departmentSummaries.push({
+        departmentId: null,
+        departmentName: 'Unassigned',
+        employeeCount: unassignedCount,
+        present: unassignedStats.present,
+        absent: unassignedStats.absent,
+        late: unassignedStats.late,
+        halfDay: unassignedStats.halfDay,
+        onLeave: unassignedStats.onLeave,
+        totalAttendanceDays: unassignedStats.totalCount,
+        avgWorkedMinutes: unassignedStats.avgWorked,
+        attendanceRate: Math.round((attended / totalDays) * 100),
+      });
+    }
+
+    return {
+      period: { from: query.from, to: query.to },
+      departments: departmentSummaries,
+    };
+  }
+
+  /**
+   * Export attendance records as CSV. Returns the CSV content as a string.
+   * Controller handles setting response headers for download.
+   */
+  async exportCsv(
+    companyId: string,
+    query: AttendanceCsvQueryDto,
+  ): Promise<{ csv: string; rowCount: number; truncated: boolean }> {
+    const where: any = { companyId };
+    const employeeFilter: any = { deletedAt: null };
+
+    if (query.employeeId) where.employeeId = query.employeeId;
+    if (query.departmentId) employeeFilter.departmentId = query.departmentId;
+    where.employee = employeeFilter;
+    if (query.status) where.status = query.status;
+    if (query.from || query.to) {
+      where.date = {};
+      if (query.from) where.date.gte = new Date(query.from + 'T00:00:00.000Z');
+      if (query.to) where.date.lte = new Date(query.to + 'T23:59:59.999Z');
+    }
+
+    const MAX_EXPORT_ROWS = 50_000;
+
+    // Fetch records with a max limit to prevent OOM on large exports
+    const records = await this.prisma.attendanceRecord.findMany({
+      where,
+      take: MAX_EXPORT_ROWS + 1, // Fetch one extra to detect truncation
+      orderBy: [{ date: 'desc' }, { employeeId: 'asc' }],
+      include: {
+        employee: {
+          select: {
+            employeeCode: true,
+            firstName: true,
+            lastName: true,
+            department: { select: { name: true } },
+            designation: { select: { title: true } },
+            branch: { select: { name: true } },
+          },
+        },
+      },
+    });
+
+    const truncated = records.length > MAX_EXPORT_ROWS;
+    const exportRows = truncated ? records.slice(0, MAX_EXPORT_ROWS) : records;
+
+    // Build CSV in memory
+    const lines: string[] = [];
+
+    const headers = [
+      'Employee Code',
+      'First Name',
+      'Last Name',
+      'Department',
+      'Designation',
+      'Branch',
+      'Date',
+      'Status',
+      'Clock In',
+      'Clock Out',
+      'Worked Minutes',
+      'Overtime Minutes',
+      'Late Minutes',
+      'Early Exit Minutes',
+      'Source',
+      'Notes',
+    ];
+    lines.push(headers.join(','));
+
+    for (const record of exportRows) {
+      const row = [
+        escapeCsv(record.employee?.employeeCode ?? ''),
+        escapeCsv(record.employee?.firstName ?? ''),
+        escapeCsv(record.employee?.lastName ?? ''),
+        escapeCsv(record.employee?.department?.name ?? ''),
+        escapeCsv(record.employee?.designation?.title ?? ''),
+        escapeCsv(record.employee?.branch?.name ?? ''),
+        record.date.toISOString().slice(0, 10),
+        record.status,
+        record.checkIn ? record.checkIn.toISOString() : '',
+        record.checkOut ? record.checkOut.toISOString() : '',
+        record.workedMinutes?.toString() ?? '',
+        record.overtimeMinutes?.toString() ?? '',
+        record.lateMinutes?.toString() ?? '',
+        record.earlyExitMinutes?.toString() ?? '',
+        record.source,
+        escapeCsv(record.notes ?? ''),
+      ];
+      lines.push(row.join(','));
+    }
+
+    if (truncated) {
+      lines.push(`"\n[Export truncated at ${MAX_EXPORT_ROWS} rows. Refine your filters for a smaller export.]"`);
+    }
+
+    return { csv: lines.join('\n'), rowCount: exportRows.length, truncated };
   }
 }

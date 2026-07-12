@@ -38,9 +38,21 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table';
-import QRDisplay from '@/components/attendance-security/qr-display';
-import QRScanner from '@/components/attendance-security/qr-scanner';
-import FaceCapture from '@/components/attendance-security/face-capture';
+import dynamic from 'next/dynamic';
+
+// Lazy-load heavy security components (QR scanner uses jsQR, face capture uses WebRTC)
+const QRDisplay = dynamic(() => import('@/components/attendance-security/qr-display'), {
+  ssr: false,
+  loading: () => <div className="skeleton h-32 w-full rounded-xl" />,
+});
+const QRScanner = dynamic(() => import('@/components/attendance-security/qr-scanner'), {
+  ssr: false,
+  loading: () => <div className="skeleton h-48 w-full rounded-xl" />,
+});
+const FaceCapture = dynamic(() => import('@/components/attendance-security/face-capture'), {
+  ssr: false,
+  loading: () => <div className="skeleton h-40 w-full rounded-xl" />,
+});
 
 // ──────────────────────────────────────────────────────────
 // Types

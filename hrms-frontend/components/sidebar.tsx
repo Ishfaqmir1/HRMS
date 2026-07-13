@@ -1,10 +1,12 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { clsx } from 'clsx';
 import { useAuth } from '@/lib/auth-context';
+import { api, unwrap } from '@/lib/api-client';
 import { MENU_CONFIG, type MenuItem, type MenuSection } from '@/config/menu.config';
 
 // ──────────────────────────────────────────────────────────────────
@@ -50,7 +52,17 @@ function filterItems(
 // NavSection sub-component
 // ──────────────────────────────────────────────────────────────────
 
-function NavSection({ title, items, pathname }: { title: string; items: MenuItem[]; pathname: string | null }) {
+function NavSection({
+  title,
+  items,
+  pathname,
+  onPrefetch,
+}: {
+  title: string;
+  items: MenuItem[];
+  pathname: string | null;
+  onPrefetch: (href: string) => void;
+}) {
   if (items.length === 0) return null;
 
   return (
@@ -64,6 +76,7 @@ function NavSection({ title, items, pathname }: { title: string; items: MenuItem
           <Link
             key={href}
             href={href}
+            onMouseEnter={() => onPrefetch(href)}
             className={clsx(
               'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150',
               active
@@ -95,8 +108,28 @@ function NavSection({ title, items, pathname }: { title: string; items: MenuItem
 // Sidebar Component
 // ──────────────────────────────────────────────────────────────────
 
+// ──────────────────────────────────────────────────────────────────
+// Route → pre-fetch map for hover prefetching
+// When the user hovers a sidebar link we seed the react-query cache
+// with the page's main data so navigation feels instant.
+// ──────────────────────────────────────────────────────────────────
+
+// Prefetch page data into react-query cache on sidebar link hover.
+// Keys must exactly match each page's useQuery queryKey.
+const PREFETCH_ROUTES: Record<string, { queryKey: string[]; fetcher: () => Promise<unknown> }> = {
+  '/dashboard': {
+    queryKey: ['dashboard'],
+    fetcher: () => unwrap(api.get('/me/dashboard')),
+  },
+  '/employees': {
+    queryKey: ['employees'],
+    fetcher: () => unwrap(api.get('/employees')),
+  },
+};
+
 export function Sidebar() {
   const pathname = usePathname();
+  const queryClient = useQueryClient();
   const { profile, roles, permissions, featureMap, isLoaded } = useAuth();
 
   // Memoize filtered sections to avoid re-computation on every render
@@ -109,6 +142,24 @@ export function Sidebar() {
           items: filterItems(section.items, roles, permissions, featureMap),
         })),
     [roles, permissions, featureMap],
+  );
+
+  // Prefetch page data into react-query cache on link hover
+  const prefetchPage = useCallback(
+    (href: string) => {
+      const route = PREFETCH_ROUTES[href];
+      if (!route) return;
+      // Skip if already cached and not stale
+      const state = queryClient.getQueryState(route.queryKey);
+      if (state && state.data !== undefined && state.dataUpdatedAt + 60_000 > Date.now()) return;
+
+      queryClient.prefetchQuery({
+        queryKey: route.queryKey,
+        queryFn: route.fetcher,
+        staleTime: 30 * 1000,
+      });
+    },
+    [queryClient],
   );
 
   const initials = profile
@@ -148,6 +199,7 @@ export function Sidebar() {
                 title={section.title}
                 items={section.items}
                 pathname={pathname}
+                onPrefetch={prefetchPage}
               />
             </div>
           ))

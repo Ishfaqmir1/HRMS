@@ -19,6 +19,8 @@ export default function DashboardPage() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => unwrap<DashboardData>(api.get('/me/dashboard')),
+    staleTime: 30 * 1000,        // 30s — fresh enough for clock-in status
+    refetchInterval: 60 * 1000,   // Auto-refresh every minute (attendance, leaves)
   });
 
   if (isLoading) {

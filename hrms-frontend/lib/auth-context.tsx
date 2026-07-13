@@ -10,8 +10,10 @@ import {
   type ReactNode,
 } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { api, unwrap } from '@/lib/api-client';
 import { isAuthenticated, clearSession } from '@/lib/auth';
+import type { DashboardData } from '@/lib/types';
 
 // ──────────────────────────────────────────────────────────────────
 // Types
@@ -119,6 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const fetching = useRef(false);
+  const queryClient = useQueryClient();
 
   const fetchAuth = useCallback(async () => {
     if (fetching.current) return;
@@ -136,46 +139,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Decode JWT first to check permissions before making API calls
-      const jwtFallback = decodeJwt();
+      // Decode JWT locally — it already has roles, permissions, and employeeId.
+      // Saves a full round-trip to /auth/me (~1s).
+      const jwtPayload = decodeJwt();
+      const roles = jwtPayload?.roles ?? [];
+      const permissions = jwtPayload?.permissions ?? [];
 
       // Only fetch feature flags if user has company.read (skip for employees → avoids 403)
-      const canReadCompany = jwtFallback?.permissions?.includes('company.read');
+      const canReadCompany = permissions.includes('company.read');
       const featuresPromise = canReadCompany
         ? unwrap<FeatureFlag[]>(api.get('/billing/features')).catch(() => [] as FeatureFlag[])
         : Promise.resolve([] as FeatureFlag[]);
 
-      // Fetch auth context (roles + permissions), profile, and feature flags in parallel
-      const [authMe, profile, features] = await Promise.all([
-        unwrap<{
-          userId: string;
-          email: string;
-          companyId: string | null;
-          employeeId: string | null;
-          roles: string[];
-          permissions: string[];
-        }>(api.get('/auth/me')).catch(() => null),
+      // Fetch profile in parallel with features — JWT already has userId, email, companyId, etc.
+      const [profile, features] = await Promise.all([
         unwrap<UserProfile>(api.get('/me/profile')).catch(() => null),
         featuresPromise,
       ]);
-
-      // Fallback: decode JWT payload for basic info if /auth/me fails
-      const tokenPayload = authMe ?? jwtFallback;
-      const roles = tokenPayload?.roles ?? [];
-      const permissions = tokenPayload?.permissions ?? [];
 
       const featureMap: Record<string, boolean> = {};
       for (const f of features) {
         featureMap[f.code] = f.isEnabled;
       }
 
+      // Pre-fetch dashboard data into react-query cache during auth init
+      // Saves ~1s when user lands on dashboard
+      if (jwtPayload?.employeeId) {
+        queryClient.prefetchQuery({
+          queryKey: ['dashboard'],
+          queryFn: () => unwrap<DashboardData>(api.get('/me/dashboard')),
+          staleTime: 30 * 1000, // 30s — ensures fresh data but cached briefly
+        });
+      }
+
       setState({
         isLoaded: true,
         isAuthenticated: true,
-        userId: tokenPayload?.userId ?? null,
-        email: tokenPayload?.email ?? null,
-        companyId: tokenPayload?.companyId ?? null,
-        employeeId: tokenPayload?.employeeId ?? null,
+        userId: jwtPayload?.userId ?? null,
+        email: jwtPayload?.email ?? null,
+        companyId: jwtPayload?.companyId ?? null,
+        employeeId: jwtPayload?.employeeId ?? null,
         roles,
         permissions,
         profile,

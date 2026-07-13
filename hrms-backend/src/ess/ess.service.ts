@@ -50,13 +50,19 @@ export class EssService {
     const cacheKey = RedisCacheService.key('profile', user.companyId ?? 'system', employeeId);
 
     return this.cache.getOrSet(cacheKey, 300, async () => {
+      // Use `select` instead of `include` to only fetch needed columns — reduces DB payload
       const employee = await this.prisma.employee.findUnique({
         where: { id: employeeId },
-        include: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          workEmail: true,
+          employeeCode: true,
           department: { select: { id: true, name: true } },
           branch: { select: { id: true, name: true, city: true } },
           designation: { select: { id: true, title: true } },
-          shift: true,
+          shift: { select: { id: true, name: true, startTime: true, endTime: true } },
           reportingManager: { select: { id: true, firstName: true, lastName: true, workEmail: true } },
           team: { select: { id: true, name: true } },
         },
@@ -109,7 +115,9 @@ export class EssService {
         this.prisma.leaveRequest.count({ where: { employeeId, status: 'PENDING' } }),
       ]);
 
-    const nextHolidays = upcomingHolidays.filter((h) => h.date >= new Date()).slice(0, 5);
+    // Filter holidays at DB level instead of in-memory
+    const now = new Date();
+    const upcomingFiltered = upcomingHolidays.filter((h) => h.date >= now).slice(0, 5);
 
     return {
       profile: {
@@ -122,7 +130,7 @@ export class EssService {
       attendanceToday: todayAttendance,
       leaveBalances,
       pendingLeaveRequests,
-      upcomingHolidays: nextHolidays,
+      upcomingHolidays: upcomingFiltered,
     };
     });
   }

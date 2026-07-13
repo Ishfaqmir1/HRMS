@@ -12,8 +12,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
           queries: {
             retry: 1,
             refetchOnWindowFocus: false,
-            staleTime: 5 * 60 * 1000, // 5 minutes — rarely-changing data like employees, departments
-            gcTime: 10 * 60 * 1000,   // keep cached data for 10 minutes
+            staleTime: 2 * 60 * 1000,    // 2min — safe default; pages override down for real-time data
+            gcTime: 5 * 60 * 1000,       // 5min garbage collection
           },
         },
       }),

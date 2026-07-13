@@ -125,6 +125,30 @@ const PREFETCH_ROUTES: Record<string, { queryKey: string[]; fetcher: () => Promi
     queryKey: ['employees'],
     fetcher: () => unwrap(api.get('/employees')),
   },
+  '/attendance': {
+    queryKey: ['attendance', 'today'],
+    fetcher: () => unwrap(api.get('/attendance/me/today')),
+  },
+  '/leave': {
+    queryKey: ['leave', 'balances'],
+    fetcher: () => unwrap(api.get('/leave/balances/me')),
+  },
+  '/ess': {
+    queryKey: ['dashboard'],
+    fetcher: () => unwrap(api.get('/me/dashboard')),
+  },
+  '/ess/attendance': {
+    queryKey: ['me', 'today'],
+    fetcher: () => unwrap(api.get('/attendance/me/today')),
+  },
+  '/ess/leave': {
+    queryKey: ['me', 'leave-balances'],
+    fetcher: () => unwrap(api.get('/me/leave/balances')),
+  },
+  '/payroll': {
+    queryKey: ['payroll', 'dashboard'],
+    fetcher: () => unwrap(api.get('/payroll/dashboard')),
+  },
 };
 
 export function Sidebar() {

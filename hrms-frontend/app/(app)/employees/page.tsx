@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { Plus, X, Copy, Check } from 'lucide-react';
 import { api, unwrap } from '@/lib/api-client';
 import { Employee, PaginatedResult } from '@/lib/types';
+import { STALE_TIMES } from '@/lib/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input, Label, FieldError } from '@/components/ui/input';
@@ -38,7 +39,13 @@ type FormValues = z.infer<typeof schema>;
 
 export default function EmployeesPage() {
   const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  // 300ms debounce for search to avoid excessive API calls
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(searchInput), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
   const [showForm, setShowForm] = useState(false);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -50,6 +57,7 @@ export default function EmployeesPage() {
       unwrap<PaginatedResult<Employee>>(
         api.get('/employees', { params: { page, limit: 10, search: search || undefined } }),
       ),
+    staleTime: STALE_TIMES.EMPLOYEES,
   });
 
   const {
@@ -221,9 +229,9 @@ export default function EmployeesPage() {
         <CardContent className="pt-5">
           <Input
             placeholder="Search by name, code, or email…"
-            value={search}
+            value={searchInput}
             onChange={(e) => {
-              setSearch(e.target.value);
+              setSearchInput(e.target.value);
               setPage(1);
             }}
             className="mb-4 max-w-sm"

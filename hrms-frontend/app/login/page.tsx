@@ -52,7 +52,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="auth-page-bg flex min-h-screen items-center justify-center px-4">
+    <main className="auth-page-bg flex min-h-screen items-center justify-center px-4">
       <div className="auth-card-enter w-full max-w-sm">
         {/* Brand Header */}
         <div className="mb-8 text-center">
@@ -120,6 +120,6 @@ export default function LoginPage() {
           </Link>
         </p>
       </div>
-    </div>
+    </main>
   );
 }

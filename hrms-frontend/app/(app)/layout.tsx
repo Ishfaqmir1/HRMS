@@ -77,12 +77,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (!checked) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-paper">
+      <main className="flex min-h-screen items-center justify-center bg-paper">
         <div className="flex flex-col items-center gap-3">
+          <h1 className="sr-only">Loading</h1>
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-accent" />
-          <p className="text-sm text-gray-500">Loading...</p>
+          <p className="text-sm text-gray-700">Loading...</p>
         </div>
-      </div>
+      </main>
     );
   }
 

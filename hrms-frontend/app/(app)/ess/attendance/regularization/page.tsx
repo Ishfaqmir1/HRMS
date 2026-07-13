@@ -314,6 +314,12 @@ export default function AttendanceRegularizationPage() {
   const firstDay = new Date(year, month - 1, 1).getDay();
   const daysInMonth = new Date(year, month, 0).getDate();
 
+  const isPastDay = useCallback((day: number) => {
+    const d = new Date(year, month - 1, day);
+    d.setHours(23, 59, 59, 999);
+    return d <= now;
+  }, [year, month, now]);
+
   const recordMap = useMemo(() => {
     const map = new Map<string, CalendarDayRecord>();
     if (!calendarData?.records) return map;
@@ -563,8 +569,8 @@ export default function AttendanceRegularizationPage() {
                           </span>
                         )}
 
-                        {/* "Needs Regularization" indicator */}
-                        {canRegularize && (
+                        {/* "Needs Regularization" indicator — only for past dates */}
+                        {canRegularize && isPastDay(day) && (
                           <span className="absolute -right-0.5 -top-0.5 flex h-2 w-2 sm:h-2.5 sm:w-2.5">
                             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber/40" />
                             <span className="relative inline-flex h-full w-full rounded-full bg-amber" />
@@ -623,6 +629,7 @@ export default function AttendanceRegularizationPage() {
                 <p className="mt-3 text-center text-[10px] text-ink-faint sm:text-xs">
                   Click on a <span className="text-amber-600 font-medium">colored day</span> to submit a regularization request.
                   {' '}Use <strong>Bulk</strong> mode to select multiple days.
+                  {' '}Only <strong>past dates</strong> can be regularized.
                 </p>
               )}
             </>

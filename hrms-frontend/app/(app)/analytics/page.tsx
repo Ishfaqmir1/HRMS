@@ -12,8 +12,8 @@ import dynamic from 'next/dynamic';
 import {
   Users, Building2, Briefcase, TrendingUp, Calendar,
   Download, BarChart3,
-  ChevronLeft, ChevronRight,
 } from 'lucide-react';
+import Link from 'next/link';
 import { getAccessToken } from '@/lib/auth';
 import type { AttendanceTrendPoint, DepartmentAttendanceSummary } from '@/lib/types';
 
@@ -65,13 +65,17 @@ export default function AnalyticsPage() {
   const [deptTo, setDeptTo] = useState(() => formatDateInput(now));
   const [isExporting, setIsExporting] = useState(false);
 
+  // Track whether user has access to attendance reports (requires attendance.approve).
+  // Initialized to null to avoid flash of content before API responds.
+  const [hasAttendanceAccess, setHasAttendanceAccess] = useState<boolean | null>(null);
+
   // ===== Existing company analytics =====
   const { data, isLoading, isError } = useQuery({
     queryKey: ['analytics', 'dashboard'],
     queryFn: () => unwrap<AnalyticsData>(api.get('/analytics/dashboard')),
   });
 
-  // ===== Attendance trend report =====
+  // ===== Attendance trend report (catches 403 gracefully) =====
   const {
     data: trendData,
     isLoading: trendLoading,
@@ -79,17 +83,27 @@ export default function AnalyticsPage() {
   } = useQuery({
     queryKey: ['attendance', 'reports', 'trend', trendFrom, trendTo, granularity],
     queryFn: async () => {
-      const result = await unwrap<{ period: any; granularity: string; data: AttendanceTrendPoint[] }>(
-        api.get('/attendance/reports/trend', {
-          params: { from: trendFrom, to: trendTo, granularity },
-        }),
-      );
-      return result.data ?? [];
+      try {
+        const result = await unwrap<{ period: any; granularity: string; data: AttendanceTrendPoint[] }>(
+          api.get('/attendance/reports/trend', {
+            params: { from: trendFrom, to: trendTo, granularity },
+          }),
+        );
+        setHasAttendanceAccess(true);
+        return result.data ?? [];
+      } catch (err: any) {
+        if (err?.response?.status === 403) {
+          setHasAttendanceAccess(false);
+          return [];
+        }
+        throw err;
+      }
     },
     enabled: !!trendFrom && !!trendTo,
+    retry: false,
   });
 
-  // ===== Department attendance summary =====
+  // ===== Department attendance summary (catches 403 gracefully) =====
   const {
     data: deptData,
     isLoading: deptLoading,
@@ -97,14 +111,23 @@ export default function AnalyticsPage() {
   } = useQuery({
     queryKey: ['attendance', 'reports', 'departments', deptFrom, deptTo],
     queryFn: async () => {
-      const result = await unwrap<{ period: any; departments: DepartmentAttendanceSummary[] }>(
-        api.get('/attendance/reports/departments', {
-          params: { from: deptFrom, to: deptTo },
-        }),
-      );
-      return result.departments ?? [];
+      try {
+        const result = await unwrap<{ period: any; departments: DepartmentAttendanceSummary[] }>(
+          api.get('/attendance/reports/departments', {
+            params: { from: deptFrom, to: deptTo },
+          }),
+        );
+        return result.departments ?? [];
+      } catch (err: any) {
+        if (err?.response?.status === 403) {
+          setHasAttendanceAccess(false);
+          return [];
+        }
+        throw err;
+      }
     },
     enabled: !!deptFrom && !!deptTo,
+    retry: false,
   });
 
   // ===== CSV Export =====
@@ -203,39 +226,48 @@ export default function AnalyticsPage() {
       )}
 
       {/* ================================================================ */}
-      {/* NEW — ATTENDANCE ANALYTICS SECTION                             */}
+      {/* NEW — ATTENDANCE ANALYTICS SECTION (only shown if authorized)   */}
       {/* ================================================================ */}
-      <div className="relative">
-        {/* Section divider */}
-        <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-soft text-accent">
-            <BarChart3 size={18} />
+      {hasAttendanceAccess === true ? (
+        <div className="relative">
+          <div className="mb-6 flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-soft text-accent">
+              <BarChart3 size={18} />
+            </div>
+            <h2 className="font-serif text-xl font-semibold text-ink">Attendance Analytics</h2>
           </div>
-          <h2 className="font-serif text-xl font-semibold text-ink">Attendance Analytics</h2>
-        </div>
 
-        <AttendanceCharts
-          trendData={trendData ?? []}
-          trendLoading={trendLoading}
-          trendError={trendError}
-          deptData={deptData ?? []}
-          deptLoading={deptLoading}
-          deptError={deptError}
-          trendFrom={trendFrom}
-          trendTo={trendTo}
-          onTrendFromChange={setTrendFrom}
-          onTrendToChange={setTrendTo}
-          granularity={granularity}
-          onGranularityChange={setGranularity}
-          deptFrom={deptFrom}
-          deptTo={deptTo}
-          onDeptFromChange={setDeptFrom}
-          onDeptToChange={setDeptTo}
-          isExporting={isExporting}
-          onExport={handleExport}
-          shiftMonth={shiftMonth}
-        />
-      </div>
+          <AttendanceCharts
+            trendData={trendData ?? []}
+            trendLoading={trendLoading}
+            trendError={trendError}
+            deptData={deptData ?? []}
+            deptLoading={deptLoading}
+            deptError={deptError}
+            trendFrom={trendFrom}
+            trendTo={trendTo}
+            onTrendFromChange={setTrendFrom}
+            onTrendToChange={setTrendTo}
+            granularity={granularity}
+            onGranularityChange={setGranularity}
+            deptFrom={deptFrom}
+            deptTo={deptTo}
+            onDeptFromChange={setDeptFrom}
+            onDeptToChange={setDeptTo}
+            isExporting={isExporting}
+            onExport={handleExport}
+            shiftMonth={shiftMonth}
+          />
+        </div>
+      ) : hasAttendanceAccess === false ? (
+        <div className="rounded-xl border border-border bg-white p-6 text-center">
+          <BarChart3 size={24} className="mx-auto mb-2 text-ink-faint" />
+          <p className="text-sm text-ink-faint">
+            Attendance analytics require HR/manager access. You can view your personal attendance in the{' '}
+            <Link href="/ess/attendance/report" className="text-accent hover:underline">ESS Attendance Report</Link>.
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }

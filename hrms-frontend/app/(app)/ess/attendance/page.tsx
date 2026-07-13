@@ -242,6 +242,12 @@ function DayDetailPanel({
   const SourceIcon = getSourceIcon(record.source);
   const dayName = DAYS_FULL[new Date(record.date).getDay()];
 
+  // Build interactive map view for clock-in/out locations
+  const hasInLocation = record.checkInLat != null && record.checkInLng != null;
+  const hasOutLocation = record.checkOutLat != null && record.checkOutLng != null;
+  const mapCenterLat = record.checkInLat ?? record.checkOutLat ?? 0;
+  const mapCenterLng = record.checkInLng ?? record.checkOutLng ?? 0;
+
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm drawer-backdrop" onClick={onClose} />
@@ -321,38 +327,62 @@ function DayDetailPanel({
                 </div>
               </section>
 
-              {(record.checkInLat != null || record.checkOutLat != null) && (
+              {/* Interactive Map — greythr-style location display */}
+              {(hasInLocation || hasOutLocation) && (
                 <section>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">Location</p>
-                  <div className="space-y-2">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">📍 Location</p>
+
+                  {/* OpenStreetMap interactive map — works without API key like greythr */}
+                  <div className="mb-3 overflow-hidden rounded-xl border border-border">
+                    <div className="relative h-40 w-full bg-gray-100">
+                      <iframe
+                        title="Clock location map"
+                        className="h-full w-full border-0"
+                        loading="lazy"
+                        referrerPolicy="no-referrer-when-downgrade"
+                        src={`https://www.openstreetmap.org/export/embed.html?bbox=${mapCenterLng - 0.02},${mapCenterLat - 0.02},${mapCenterLng + 0.02},${mapCenterLat + 0.02}&layer=mapnik&marker=${mapCenterLat},${mapCenterLng}`}
+                      />
+
+                      {/* Location info overlay */}
+                      <div className="absolute bottom-1.5 left-1.5 flex flex-wrap gap-1">
+                        {hasInLocation && (
+                          <span className="rounded-md bg-white/90 px-2 py-0.5 text-[9px] font-medium text-accent shadow-xs backdrop-blur-sm">
+                            📍 Clock-in location
+                          </span>
+                        )}
+                        {hasOutLocation && (
+                          <span className="rounded-md bg-white/90 px-2 py-0.5 text-[9px] font-medium text-amber shadow-xs backdrop-blur-sm">
+                            📍 Clock-out location
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Location links */}
+                  <div className="space-y-1.5">
                     {record.checkInLat != null && (
                       <a href={getGoogleMapsLink(record.checkInLat, record.checkInLng!)}
                         target="_blank" rel="noopener noreferrer"
-                        className="flex items-center justify-between rounded-lg border border-border p-3 transition-colors hover:bg-accent-soft"
+                        className="flex items-center justify-between rounded-lg border border-border p-2.5 transition-colors hover:bg-accent-soft"
                       >
                         <div className="flex items-center gap-2">
                           <MapPin size={14} className="text-accent" />
-                          <span className="text-sm text-ink-soft">Clock-in location</span>
+                          <span className="text-xs text-ink-soft">Clock-in location</span>
                         </div>
-                        <div className="flex items-center gap-1 text-xs text-ink-faint">
-                          {record.checkInLat.toFixed(4)}, {record.checkInLng?.toFixed(4)}
-                          <ExternalLink size={10} />
-                        </div>
+                        <ExternalLink size={12} className="text-ink-faint" />
                       </a>
                     )}
                     {record.checkOutLat != null && (
                       <a href={getGoogleMapsLink(record.checkOutLat, record.checkOutLng!)}
                         target="_blank" rel="noopener noreferrer"
-                        className="flex items-center justify-between rounded-lg border border-border p-3 transition-colors hover:bg-accent-soft"
+                        className="flex items-center justify-between rounded-lg border border-border p-2.5 transition-colors hover:bg-accent-soft"
                       >
                         <div className="flex items-center gap-2">
                           <MapPin size={14} className="text-amber" />
-                          <span className="text-sm text-ink-soft">Clock-out location</span>
+                          <span className="text-xs text-ink-soft">Clock-out location</span>
                         </div>
-                        <div className="flex items-center gap-1 text-xs text-ink-faint">
-                          {record.checkOutLat.toFixed(4)}, {record.checkOutLng?.toFixed(4)}
-                          <ExternalLink size={10} />
-                        </div>
+                        <ExternalLink size={12} className="text-ink-faint" />
                       </a>
                     )}
                   </div>

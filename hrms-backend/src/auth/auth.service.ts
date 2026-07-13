@@ -261,15 +261,37 @@ export class AuthService {
    * to initialize its permission-aware state without decoding the JWT locally.
    */
   async getMe(userId: string) {
+    return this.loadUserPermissions(userId);
+  }
+
+  /**
+   * Shared re-usable method that fetches user + roles + permissions.
+   * Used by getMe(), issueTokenPair(), and JwtStrategy fallback.
+   * Single query pattern — no duplicate Prisma calls across auth flows.
+   */
+  private async loadUserPermissions(userId: string): Promise<{
+    userId: string;
+    email: string;
+    companyId: string | null;
+    employeeId: string | null;
+    roles: string[];
+    permissions: string[];
+  }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: {
+      select: {
+        id: true,
+        email: true,
+        companyId: true,
         employee: { select: { id: true } },
         userRoles: {
-          include: {
+          select: {
             role: {
-              include: {
-                rolePermissions: { include: { permission: true } },
+              select: {
+                slug: true,
+                rolePermissions: {
+                  select: { permission: { select: { code: true } } },
+                },
               },
             },
           },
@@ -284,7 +306,7 @@ export class AuthService {
     const roles = user.userRoles.map((ur) => ur.role.slug);
     const permissions = Array.from(
       new Set(
-        user.userRoles.flatMap((ur) => ur.role.rolePermissions.map((rp) => rp.permission.code)),
+        user.userRoles.flatMap((ur) => ur.role.rolePermissions.map((p) => p.permission.code)),
       ),
     );
 
@@ -311,30 +333,10 @@ export class AuthService {
     let permissions: string[] = [];
     let employeeId: string | null = null;
     try {
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        include: {
-          employee: { select: { id: true } },
-          userRoles: {
-            include: {
-              role: {
-                include: {
-                  rolePermissions: { include: { permission: true } },
-                },
-              },
-            },
-          },
-        },
-      });
-      if (user) {
-        roles = user.userRoles.map((ur) => ur.role.slug);
-        employeeId = user.employee?.id ?? null;
-        permissions = Array.from(
-          new Set(
-            user.userRoles.flatMap((ur) => ur.role.rolePermissions.map((rp) => rp.permission.code)),
-          ),
-        );
-      }
+      const result = await this.loadUserPermissions(userId);
+      roles = result.roles;
+      permissions = result.permissions;
+      employeeId = result.employeeId;
     } catch (err) {
       this.logger.warn(`Failed to load roles/permissions for JWT payload: ${(err as Error).message}`);
     }

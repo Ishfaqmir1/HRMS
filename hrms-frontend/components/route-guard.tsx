@@ -143,9 +143,14 @@ export function ProtectedRoute({ children, fallback }: ProtectedRouteProps) {
     );
   }
 
-  // On route changes, keep showing children while background-checking (no flash)
+  // On route changes, show thin loading bar instead of flashing content
   if (!authorized && hasBeenAuthorized.current) {
-    return <>{children}</>;
+    return (
+      <>
+        <div className="fixed left-0 right-0 top-0 z-50 h-0.5 animate-pulse bg-accent" />
+        {children}
+      </>
+    );
   }
 
   if (!authorized) {

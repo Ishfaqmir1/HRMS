@@ -792,7 +792,8 @@ describe('HRMS E2E Suite', () => {
     it('GET /me/loans returns my loans', async () => {
       const res = await get('/me/loans', empToken);
       expect(res.status).toBe(200);
-      expect(Array.isArray(res.body.data)).toBe(true);
+      expect(res.body.data.items).toBeDefined();
+      expect(Array.isArray(res.body.data.items)).toBe(true);
     });
 
     it('GET /me/tax-declarations returns my tax declarations', async () => {

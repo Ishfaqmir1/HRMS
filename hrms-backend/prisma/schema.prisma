@@ -323,6 +323,7 @@ model Employee {
   @@index([companyId, status])
   @@index([companyId, gender])
   @@index([companyId, dateOfJoining])
+  @@index([companyId, status, departmentId])
   @@map("employees")
 }
 
@@ -626,6 +627,7 @@ model AttendanceRecord {
   @@index([employeeId])
   @@index([date])
   @@index([companyId, date, status])
+  @@index([employeeId, date, status])
   @@map("attendance_records")
 }
 
@@ -746,6 +748,7 @@ model LeaveRequest {
   @@index([employeeId])
   @@index([status])
   @@index([employeeId, startDate, endDate])
+  @@index([employeeId, status, createdAt])
   @@map("leave_requests")
 }
 

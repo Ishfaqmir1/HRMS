@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge, statusTone } from '@/components/ui/badge';
 import {
   ChevronLeft, ChevronRight, Clock, UserCheck, AlertTriangle,
-  Sun, Timer, Coffee, CalendarDays, Download,
+  Sun, Timer, Coffee, CalendarDays,
   TrendingUp, TrendingDown, Minus, ArrowLeft,
 } from 'lucide-react';
 import Link from 'next/link';

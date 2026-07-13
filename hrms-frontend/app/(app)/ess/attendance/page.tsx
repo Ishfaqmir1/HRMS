@@ -502,7 +502,8 @@ function ClockInHeroCard({
   profile?: { shift?: { name: string; startTime: string; endTime: string } | null } | null;
 }) {
   const now = new Date();
-  const todayStr = now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  const todayStr = now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  const [mobileClockExpanded, setMobileClockExpanded] = useState(false);
   const isClockedIn = !!today?.checkIn;
   const isClockedOut = !!today?.checkOut;
   const status = today?.status || 'NOT_CLOCKED_IN';
@@ -516,8 +517,92 @@ function ClockInHeroCard({
       {/* Accent gradient header */}
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-accent via-accent/60 to-accent-soft" />
 
-      <div className="p-6 sm:p-8">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+      <div className="p-4 sm:p-8">
+        {/* Mobile: collapsible greeting row */}
+        <div className="flex items-start justify-between sm:hidden">
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-ink-faint">{todayStr}</p>
+            <h2 className="mt-0.5 font-serif text-lg font-semibold text-ink truncate">
+              {isClockedIn ? 'Good work today!' : 'Ready to start?'}
+            </h2>
+            {profile?.shift && (
+              <div className="mt-1 flex items-center gap-1 text-[10px] text-ink-soft">
+                <span className="rounded bg-accent-soft px-1.5 py-0.5 font-medium text-accent">{profile.shift.name}</span>
+                <span>{profile.shift.startTime}–{profile.shift.endTime}</span>
+              </div>
+            )}
+          </div>
+          {/* Mobile clock button — compact */}
+          <div className="shrink-0 ml-3">
+            {todayLoading ? (
+              <div className="skeleton h-14 w-14 rounded-full" />
+            ) : !isClockedIn ? (
+              <button
+                onClick={onClockIn}
+                disabled={isPending}
+                className="relative flex h-14 w-14 flex-col items-center justify-center rounded-full bg-gradient-to-br from-accent to-accent-hover text-white shadow-lg shadow-accent/30 transition-all duration-300 active:scale-90 disabled:opacity-60"
+              >
+                <span className="absolute inset-0 rounded-full bg-accent/20 animate-ping" />
+                <LogIn size={16} className="relative" />
+              </button>
+            ) : !isClockedOut ? (
+              <button
+                onClick={onClockOut}
+                disabled={isPending}
+                className="relative flex h-14 w-14 flex-col items-center justify-center rounded-full bg-gradient-to-br from-amber to-amber/80 text-white shadow-lg shadow-amber/30 transition-all duration-300 active:scale-90 disabled:opacity-60"
+              >
+                <LogOut size={16} className="relative" />
+              </button>
+            ) : (
+              <div className="flex h-14 w-14 flex-col items-center justify-center rounded-full bg-accent-soft text-accent">
+                <CircleCheckBig size={18} />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Mobile: expandable details */}
+        <div className={`mt-3 space-y-3 overflow-hidden transition-all duration-300 sm:hidden ${mobileClockExpanded ? 'max-h-96' : 'max-h-0'}`}>
+          {/* Today's timeline mini */}
+          <div className="grid grid-cols-3 gap-2 text-center text-xs">
+            <div>
+              <p className="text-[9px] text-ink-faint">In</p>
+              <p className="font-semibold text-ink">{formatTime(today?.checkIn)}</p>
+            </div>
+            <div>
+              <p className="text-[9px] text-ink-faint">Worked</p>
+              <p className="font-semibold text-ink">{formatDuration(workedMinutes)}</p>
+            </div>
+            <div>
+              <p className="text-[9px] text-ink-faint">Out</p>
+              <p className="font-semibold text-ink">{formatTime(today?.checkOut)}</p>
+            </div>
+          </div>
+          {isClockedIn && workedProgress > 0 && (
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-ink-soft/10">
+              <div className="h-full rounded-full bg-gradient-to-r from-accent to-accent/60 transition-all" style={{ width: `${workedProgress}%` }} />
+            </div>
+          )}
+          {error && (
+            <div className="rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">{error?.response?.data?.message || error?.message}</div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Link href="/ess/attendance/report" className="rounded-lg bg-ink-soft/5 px-2.5 py-1.5 text-[10px] font-medium text-ink-soft">📊 Report</Link>
+            <Link href="/ess/leave" className="rounded-lg bg-ink-soft/5 px-2.5 py-1.5 text-[10px] font-medium text-ink-soft">📅 Leave</Link>
+            <Link href="/ess/attendance/regularization" className="rounded-lg bg-ink-soft/5 px-2.5 py-1.5 text-[10px] font-medium text-ink-soft">✏️ Regularize</Link>
+          </div>
+        </div>
+
+        {/* Mobile: toggle expand / desktop: always show */}
+        <button
+          onClick={() => setMobileClockExpanded(!mobileClockExpanded)}
+          className="mt-1 flex w-full items-center justify-center text-[9px] text-ink-faint transition-colors hover:text-ink sm:hidden"
+        >
+          {mobileClockExpanded ? 'Show less ▲' : 'Show details ▼'}
+        </button>
+
+        {/* Desktop layout — hidden on mobile, shown on sm+ */}
+        <div className="hidden sm:flex sm:flex-col sm:gap-6 lg:flex-row lg:items-center lg:justify-between">
           {/* Left: Greeting + Shift Info */}
           <div className="flex-1 space-y-4">
             <div>
@@ -543,45 +628,28 @@ function ClockInHeroCard({
             {/* Today's timeline */}
             <div className="flex flex-wrap items-center gap-6">
               <div className="flex items-center gap-3">
-                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-                  isClockedIn ? 'bg-accent-soft' : 'bg-ink-soft/5'
-                }`}>
+                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${isClockedIn ? 'bg-accent-soft' : 'bg-ink-soft/5'}`}>
                   <LogIn size={18} className={isClockedIn ? 'text-accent' : 'text-ink-faint'} />
                 </div>
                 <div>
                   <p className="text-xs text-ink-faint">Clock In</p>
-                  <p className="font-serif text-lg font-semibold text-ink">
-                    {formatTime(today?.checkIn)}
-                  </p>
+                  <p className="font-serif text-lg font-semibold text-ink">{formatTime(today?.checkIn)}</p>
                 </div>
               </div>
 
-              {/* Animated connector dots */}
               <div className="hidden sm:flex items-center gap-1">
                 {[0, 1, 2].map((i) => (
-                  <div
-                    key={i}
-                    className={`h-1.5 w-1.5 rounded-full transition-all duration-500 ${
-                      isClockedIn ? 'bg-accent/40' : 'bg-border'
-                    }`}
-                    style={{ animationDelay: `${i * 200}ms` }}
-                  />
+                  <div key={i} className={`h-1.5 w-1.5 rounded-full transition-all duration-500 ${isClockedIn ? 'bg-accent/40' : 'bg-border'}`} style={{ animationDelay: `${i * 200}ms` }} />
                 ))}
               </div>
 
               <div className="flex items-center gap-3">
-                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-                  isClockedOut ? 'bg-accent-soft' : isClockedIn ? 'bg-amber-soft' : 'bg-ink-soft/5'
-                }`}>
-                  <LogOut size={18} className={
-                    isClockedOut ? 'text-accent' : isClockedIn ? 'text-amber' : 'text-ink-faint'
-                  } />
+                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${isClockedOut ? 'bg-accent-soft' : isClockedIn ? 'bg-amber-soft' : 'bg-ink-soft/5'}`}>
+                  <LogOut size={18} className={isClockedOut ? 'text-accent' : isClockedIn ? 'text-amber' : 'text-ink-faint'} />
                 </div>
                 <div>
                   <p className="text-xs text-ink-faint">Clock Out</p>
-                  <p className="font-serif text-lg font-semibold text-ink">
-                    {formatTime(today?.checkOut)}
-                  </p>
+                  <p className="font-serif text-lg font-semibold text-ink">{formatTime(today?.checkOut)}</p>
                 </div>
               </div>
             </div>
@@ -642,47 +710,33 @@ function ClockInHeroCard({
             )}
           </div>
 
-          {/* Right: Clock In/Out Button — Big, Animated */}
-          <div className="flex flex-col items-center gap-3">
+          {/* Desktop: Big Clock In/Out Button */}
+          <div className="hidden sm:flex sm:flex-col sm:items-center sm:gap-3">
             {todayLoading ? (
-              <div className="skeleton h-28 w-28 rounded-full" />
+              <div className="skeleton h-32 w-32 rounded-full" />
+            ) : !isClockedIn ? (
+              <button onClick={onClockIn} disabled={isPending}
+                className="group relative flex h-32 w-32 flex-col items-center justify-center rounded-full bg-gradient-to-br from-accent to-accent-hover text-white shadow-lg shadow-accent/30 transition-all duration-300 hover:shadow-xl hover:shadow-accent/40 hover:scale-105 active:scale-95 disabled:opacity-60"
+              >
+                <span className="absolute inset-0 rounded-full bg-accent/20 animate-ping" />
+                <span className="relative flex flex-col items-center">
+                  <LogIn size={28} className="mb-1 transition-transform group-hover:translate-y-[-2px]" />
+                  <span className="text-sm font-semibold">Clock In</span>
+                </span>
+              </button>
+            ) : !isClockedOut ? (
+              <button onClick={onClockOut} disabled={isPending}
+                className="group relative flex h-32 w-32 flex-col items-center justify-center rounded-full bg-gradient-to-br from-amber to-amber/80 text-white shadow-lg shadow-amber/30 transition-all duration-300 hover:shadow-xl hover:shadow-amber/40 hover:scale-105 active:scale-95 disabled:opacity-60"
+              >
+                <LogOut size={28} className="mb-1 transition-transform group-hover:translate-y-[2px]" />
+                <span className="text-sm font-semibold">Clock Out</span>
+              </button>
             ) : (
-              <>
-                {!isClockedIn ? (
-                  /* Big Clock In button — pulsing, inviting */
-                  <button
-                    onClick={onClockIn}
-                    disabled={isPending}
-                    className="group relative flex h-32 w-32 flex-col items-center justify-center rounded-full bg-gradient-to-br from-accent to-accent-hover text-white shadow-lg shadow-accent/30 transition-all duration-300 hover:shadow-xl hover:shadow-accent/40 hover:scale-105 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {/* Pulsing ring */}
-                    <span className="absolute inset-0 rounded-full bg-accent/20 animate-ping" />
-                    <span className="relative flex flex-col items-center">
-                      <LogIn size={28} className="mb-1 transition-transform group-hover:translate-y-[-2px]" />
-                      <span className="text-sm font-semibold">Clock In</span>
-                    </span>
-                  </button>
-                ) : !isClockedOut ? (
-                  /* Big Clock Out button */
-                  <button
-                    onClick={onClockOut}
-                    disabled={isPending}
-                    className="group relative flex h-32 w-32 flex-col items-center justify-center rounded-full bg-gradient-to-br from-amber to-amber/80 text-white shadow-lg shadow-amber/30 transition-all duration-300 hover:shadow-xl hover:shadow-amber/40 hover:scale-105 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    <LogOut size={28} className="mb-1 transition-transform group-hover:translate-y-[2px]" />
-                    <span className="text-sm font-semibold">Clock Out</span>
-                  </button>
-                ) : (
-                  /* Already clocked out — show checkmark */
-                  <div className="flex h-32 w-32 flex-col items-center justify-center rounded-full bg-accent-soft text-accent">
-                    <CircleCheckBig size={32} className="mb-1" />
-                    <span className="text-sm font-semibold">Done</span>
-                  </div>
-                )}
-              </>
+              <div className="flex h-32 w-32 flex-col items-center justify-center rounded-full bg-accent-soft text-accent">
+                <CircleCheckBig size={32} className="mb-1" />
+                <span className="text-sm font-semibold">Done</span>
+              </div>
             )}
-
-            {/* Small hint text */}
             {!isClockedOut && (
               <p className="text-[10px] text-ink-faint text-center max-w-[140px] leading-tight">
                 {isPending ? '⏳ Processing...' : isClockedIn ? 'Don\'t forget to clock out!' : 'Tap to start your shift'}
@@ -691,35 +745,23 @@ function ClockInHeroCard({
           </div>
         </div>
 
-        {/* Error message */}
+        {/* Desktop error */}
         {error && (
-          <div className="mt-4 rounded-lg bg-danger-soft px-4 py-2.5 text-sm text-danger">
+          <div className="mt-4 hidden sm:block rounded-lg bg-danger-soft px-4 py-2.5 text-sm text-danger">
             {error?.response?.data?.message || error?.message || 'Something went wrong.'}
           </div>
         )}
 
-        {/* Quick links row */}
-        <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-border pt-4">
-          <Link
-            href="/ess/attendance/report"
-            className="flex items-center gap-1.5 rounded-lg bg-ink-soft/5 px-3 py-2 text-xs font-medium text-ink-soft hover:bg-accent-soft hover:text-accent transition-colors"
-          >
-            <BarChart3 size={14} />
-            View Report
+        {/* Quick links — desktop only */}
+        <div className="mt-6 hidden sm:flex sm:flex-wrap sm:items-center sm:gap-3 border-t border-border pt-4">
+          <Link href="/ess/attendance/report" className="flex items-center gap-1.5 rounded-lg bg-ink-soft/5 px-3 py-2 text-xs font-medium text-ink-soft hover:bg-accent-soft hover:text-accent transition-colors">
+            <BarChart3 size={14} /> View Report
           </Link>
-          <Link
-            href="/ess/leave"
-            className="flex items-center gap-1.5 rounded-lg bg-ink-soft/5 px-3 py-2 text-xs font-medium text-ink-soft hover:bg-accent-soft hover:text-accent transition-colors"
-          >
-            <CalendarDays size={14} />
-            Apply Leave
+          <Link href="/ess/leave" className="flex items-center gap-1.5 rounded-lg bg-ink-soft/5 px-3 py-2 text-xs font-medium text-ink-soft hover:bg-accent-soft hover:text-accent transition-colors">
+            <CalendarDays size={14} /> Apply Leave
           </Link>
-          <Link
-            href="/ess/attendance/regularization"
-            className="flex items-center gap-1.5 rounded-lg bg-ink-soft/5 px-3 py-2 text-xs font-medium text-ink-soft hover:bg-accent-soft hover:text-accent transition-colors"
-          >
-            <FileText size={14} />
-            Regularize
+          <Link href="/ess/attendance/regularization" className="flex items-center gap-1.5 rounded-lg bg-ink-soft/5 px-3 py-2 text-xs font-medium text-ink-soft hover:bg-accent-soft hover:text-accent transition-colors">
+            <FileText size={14} /> Regularize
           </Link>
         </div>
       </div>

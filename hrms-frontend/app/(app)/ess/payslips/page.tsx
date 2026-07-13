@@ -19,7 +19,7 @@ const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function fmt(v: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v);
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2 }).format(v);
 }
 
 async function downloadPayslip(payslipId: string, filename: string) {
@@ -152,14 +152,15 @@ export default function PayslipsPage() {
     const period = selected.run
       ? `${MONTHS[selected.run.month - 1]} ${selected.run.year}`
       : '';
-    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     const genDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
     win.document.write(`<!DOCTYPE html><html><head>
       <title>Payslip - ${period}</title>
       <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 40px; max-width: 700px; margin: 0 auto; color: #1a1a2e; }
-        h1 { font-size: 24px; color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 12px; }
+        .company-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; border-bottom: 2px solid #0B6E63; padding-bottom: 12px; }
+        .company-logo { width: 44px; height: 44px; background: #0B6E63; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px; font-weight: bold; flex-shrink: 0; }
+        h1 { font-size: 22px; color: #0B6E63; margin: 0; }
         h2 { font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 24px; }
         table { width: 100%; border-collapse: collapse; margin-top: 8px; }
         th { text-align: left; padding: 6px 8px; font-size: 11px; text-transform: uppercase; color: #64748b; background: #f1f5f9; border-bottom: 2px solid #e2e8f0; }
@@ -170,9 +171,14 @@ export default function PayslipsPage() {
         .footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center; }
         @media print { body { padding: 20px; } }
       </style>
-    </head><body>
-      <h1>Payslip</h1>
-      <p style="margin-top:-8px;color:#64748b;font-size:13px;">Period: <strong>${period}</strong></p>
+    </head><body>          <div class="company-header">
+        <svg width="44" height="44" viewBox="0 0 44 44" style="flex-shrink:0;"><rect width="44" height="44" rx="10" fill="#0B6E63"/><path d="M22 8l14 8v16l-14 8-14-8V16l14-8z" fill="rgba(255,255,255,0.15)"/><circle cx="22" cy="22" r="12" fill="#0D9488"/><path d="M22 14L28 18v8l-6 4-6-4v-8l6-4z" fill="white" opacity="0.9"/><circle cx="22" cy="22" r="3" fill="#0B6E63"/></svg>
+        <div>
+          <h1>Payslip</h1>
+          <p style="margin:2px 0 0 0;color:#64748b;font-size:12px;">Demo Company Pvt Ltd</p>
+        </div>
+      </div>
+      <p style="margin-top:0;color:#64748b;font-size:13px;">Period: <strong>${period}</strong></p>
       <p style="color:#64748b;font-size:13px;">Generated: ${genDate}</p>
       <h2>Earnings</h2>
       <table>

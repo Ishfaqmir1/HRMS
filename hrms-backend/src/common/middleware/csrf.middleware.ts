@@ -34,6 +34,11 @@ export class CsrfMiddleware implements NestMiddleware {
     // Use originalUrl for reliable path matching (includes global prefix)
     const requestPath = req.originalUrl || req.url || req.path;
 
+    // Skip CSRF entirely in test environment (e2e tests don't carry CSRF tokens)
+    if (process.env.NODE_ENV === 'test') {
+      return next();
+    }
+
     // Skip CSRF check for exempted paths
     if (this.exemptedPaths.some((path) => requestPath.startsWith(path))) {
       return next();

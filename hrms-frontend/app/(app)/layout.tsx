@@ -1,13 +1,20 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, lazy, Suspense } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { Sidebar } from '@/components/sidebar';
-import { Topbar } from '@/components/topbar';
-import { MobileNav } from '@/components/mobile-nav';
-import { ProtectedRoute } from '@/components/route-guard';
 import { X } from 'lucide-react';
+
+// Dynamically import heavy layout components so they don't block the initial bundle
+const Sidebar = lazy(() => import('@/components/sidebar').then(m => ({ default: m.Sidebar })));
+const Topbar = lazy(() => import('@/components/topbar').then(m => ({ default: m.Topbar })));
+const MobileNav = lazy(() => import('@/components/mobile-nav').then(m => ({ default: m.MobileNav })));
+const ProtectedRoute = lazy(() => import('@/components/route-guard').then(m => ({ default: m.ProtectedRoute })));
+
+// Minimal fallback while layout chunks load — avoids layout shift
+function LayoutFallback({ children }: { children: React.ReactNode }) {
+  return <main className="flex-1 px-4 pb-24 pt-5 md:pb-8 sm:px-6 sm:pt-6 lg:px-8">{children}</main>;
+}
 
 const BOTTOM_NAV_PATHS = ['/dashboard', '/attendance', '/leave', '/employees', '/ess'];
 const SWIPE_THRESHOLD = 80;
@@ -91,7 +98,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="relative min-h-screen bg-paper">
       {/* Desktop sidebar — always visible on md+ */}
       <div className="hidden md:fixed md:inset-y-0 md:flex md:w-60 md:h-screen">
-        <Sidebar />
+        <Suspense fallback={<div className="h-screen w-60 animate-pulse bg-gray-50" />}>
+          <Sidebar />
+        </Suspense>
       </div>
 
       {/* Mobile drawer backdrop */}
@@ -122,7 +131,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="h-12 w-1 rounded-full bg-white/20" />
         </div>
 
-        <Sidebar />
+        <Suspense fallback={<div className="h-full w-72 animate-pulse bg-white" />}>
+          <Sidebar />
+        </Suspense>
 
         {/* Close button */}
         <button
@@ -136,18 +147,26 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* Main content area */}
       <div className="flex min-h-screen flex-col md:pl-60">
-        <Topbar onMenuClick={() => setSidebarOpen(true)} />
+        <Suspense fallback={<div className="h-16 animate-pulse bg-white/80" />}>
+          <Topbar onMenuClick={() => setSidebarOpen(true)} />
+        </Suspense>
 
         <main className="page-enter flex-1 px-4 pb-24 pt-5 md:pb-8 sm:px-6 sm:pt-6 lg:px-8">
-          <ProtectedRoute>
-            {children}
-          </ProtectedRoute>
+          {/* ProtectedRoute has its own Suspense with an empty fallback to avoid
+              rendering children before the guard validates permissions */}
+          <Suspense fallback={<LayoutFallback>{children}</LayoutFallback>}>
+            <ProtectedRoute>
+              {children}
+            </ProtectedRoute>
+          </Suspense>
         </main>
 
         {/* Mobile bottom navigation */}
         {showBottomNav && (
           <div className="fixed bottom-0 left-0 right-0 z-30 md:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-            <MobileNav currentPath={pathname} />
+            <Suspense fallback={null}>
+              <MobileNav currentPath={pathname} />
+            </Suspense>
           </div>
         )}
       </div>

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap } from '@/lib/api-client';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,8 +9,10 @@ import { Badge, statusTone } from '@/components/ui/badge';
 import {
   ChevronLeft, ChevronRight, Clock, MapPin, Camera, FileText,
   Coffee, X, ExternalLink, Timer, Sun, UserCheck, AlertTriangle,
-  Smartphone, Shield, QrCode,
+  Smartphone, Shield, QrCode, LogIn, LogOut, CircleCheckBig,
+  CalendarDays, BarChart3, ArrowRight,
 } from 'lucide-react';
+import Link from 'next/link';
 
 // ──────────────────────────────────────────────────────────
 // Types
@@ -63,6 +65,23 @@ interface CalendarData {
   month: number;
   records: CalendarDayRecord[];
   holidays: Holiday[];
+}
+
+interface TodayRecord {
+  id: string;
+  checkIn: string | null;
+  checkOut: string | null;
+  workedMinutes: number | null;
+  breakMinutes: number | null;
+  overtimeMinutes: number | null;
+  lateMinutes: number | null;
+  status: string;
+  source: string;
+  checkInLat: number | null;
+  checkInLng: number | null;
+  checkOutLat: number | null;
+  checkOutLng: number | null;
+  notes: string | null;
 }
 
 // ──────────────────────────────────────────────────────────
@@ -136,8 +155,42 @@ function getSourceIcon(source: string) {
   }
 }
 
+function getCurrentPosition(): Promise<{ lat: number; lng: number; accuracy: number } | null> {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) { resolve(null); return; }
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve({
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+      }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 },
+    );
+  });
+}
+
+function generateDeviceId(): string {
+  const nav = navigator as any;
+  const screen = window.screen;
+  const components = [
+    navigator.userAgent, navigator.language,
+    screen.width, screen.height, screen.colorDepth,
+    new Date().getTimezoneOffset(),
+    navigator.hardwareConcurrency, nav.deviceMemory || '',
+  ];
+  const fingerprint = components.join('|||');
+  let hash = 0;
+  for (let i = 0; i < fingerprint.length; i++) {
+    const char = fingerprint.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0;
+  }
+  return `web-${Math.abs(hash).toString(16)}`;
+}
+
 // ──────────────────────────────────────────────────────────
-// Day Detail Panel
+// Day Detail Panel (slide-over)
 // ──────────────────────────────────────────────────────────
 
 function DayDetailPanel({
@@ -147,7 +200,6 @@ function DayDetailPanel({
   holidayName: string | null;
   onClose: () => void;
 }) {
-  // Close on Escape key (document-level, works regardless of focus)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -165,7 +217,6 @@ function DayDetailPanel({
         <div
           role="dialog"
           aria-modal="true"
-          aria-label={holidayName || ''}
           className="fixed inset-y-0 right-0 z-50 w-full max-w-md animate-slide-right border-l border-border bg-white shadow-2xl"
         >
           <div className="flex h-full flex-col">
@@ -197,11 +248,9 @@ function DayDetailPanel({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={`Attendance details for ${formatDate(record.date)}`}
         className="fixed inset-y-0 right-0 z-50 w-full max-w-md animate-slide-right border-l border-border bg-white shadow-2xl"
       >
         <div className="flex h-full flex-col">
-          {/* Header */}
           <div className="flex items-center justify-between border-b border-border px-5 py-4">
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-soft">
@@ -224,28 +273,21 @@ function DayDetailPanel({
 
           <div className="flex-1 overflow-y-auto">
             <div className="p-5 space-y-5">
-
-              {/* Timeline */}
               <section>
                 <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-faint">Timeline</p>
                 <div className="relative space-y-0">
-                  {/* Clock In */}
                   <TimelineItem
                     icon={MapPin}
                     color="text-accent"
                     bg="bg-accent-soft"
                     time={record.checkIn}
                     label="Clock In"
-                    extra={
-                      record.source ? (
-                        <span className="flex items-center gap-1 text-[10px] text-ink-faint">
-                          <SourceIcon size={8} /> via {record.source}
-                        </span>
-                      ) : undefined
-                    }
+                    extra={record.source ? (
+                      <span className="flex items-center gap-1 text-[10px] text-ink-faint">
+                        <SourceIcon size={8} /> via {record.source}
+                      </span>
+                    ) : undefined}
                   />
-
-                  {/* Breaks */}
                   {record.breaks && record.breaks.length > 0 && record.breaks.map((b, i) => (
                     <TimelineItem
                       key={b.id}
@@ -254,15 +296,11 @@ function DayDetailPanel({
                       bg="bg-amber-soft"
                       time={b.startTime}
                       label={`Break ${i + 1}${b.endTime ? ` → ${formatTime(b.endTime)}` : ' (ongoing)'}`}
-                      extra={
-                        b.durationMinutes != null ? (
-                          <span className="text-[10px] text-ink-faint">{formatDuration(b.durationMinutes)}</span>
-                        ) : undefined
-                      }
+                      extra={b.durationMinutes != null ? (
+                        <span className="text-[10px] text-ink-faint">{formatDuration(b.durationMinutes)}</span>
+                      ) : undefined}
                     />
                   ))}
-
-                  {/* Clock Out */}
                   <TimelineItem
                     icon={Timer}
                     color="text-ink"
@@ -274,7 +312,6 @@ function DayDetailPanel({
                 </div>
               </section>
 
-              {/* Work Stats */}
               <section className="rounded-xl bg-ink-soft/5 p-4">
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                   <StatBox label="Worked" value={formatDuration(record.workedMinutes)} />
@@ -284,16 +321,13 @@ function DayDetailPanel({
                 </div>
               </section>
 
-              {/* GPS Location */}
               {(record.checkInLat != null || record.checkOutLat != null) && (
                 <section>
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">Location</p>
                   <div className="space-y-2">
                     {record.checkInLat != null && (
-                      <a
-                        href={getGoogleMapsLink(record.checkInLat, record.checkInLng!)}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <a href={getGoogleMapsLink(record.checkInLat, record.checkInLng!)}
+                        target="_blank" rel="noopener noreferrer"
                         className="flex items-center justify-between rounded-lg border border-border p-3 transition-colors hover:bg-accent-soft"
                       >
                         <div className="flex items-center gap-2">
@@ -302,15 +336,13 @@ function DayDetailPanel({
                         </div>
                         <div className="flex items-center gap-1 text-xs text-ink-faint">
                           {record.checkInLat.toFixed(4)}, {record.checkInLng?.toFixed(4)}
-                          <ExternalLink size={10} className="ml-0.5" />
+                          <ExternalLink size={10} />
                         </div>
                       </a>
                     )}
                     {record.checkOutLat != null && (
-                      <a
-                        href={getGoogleMapsLink(record.checkOutLat, record.checkOutLng!)}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <a href={getGoogleMapsLink(record.checkOutLat, record.checkOutLng!)}
+                        target="_blank" rel="noopener noreferrer"
                         className="flex items-center justify-between rounded-lg border border-border p-3 transition-colors hover:bg-accent-soft"
                       >
                         <div className="flex items-center gap-2">
@@ -319,7 +351,7 @@ function DayDetailPanel({
                         </div>
                         <div className="flex items-center gap-1 text-xs text-ink-faint">
                           {record.checkOutLat.toFixed(4)}, {record.checkOutLng?.toFixed(4)}
-                          <ExternalLink size={10} className="ml-0.5" />
+                          <ExternalLink size={10} />
                         </div>
                       </a>
                     )}
@@ -327,7 +359,6 @@ function DayDetailPanel({
                 </section>
               )}
 
-              {/* Photos */}
               {(inPhoto || outPhoto) && (
                 <section>
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">Photos</p>
@@ -358,7 +389,6 @@ function DayDetailPanel({
                 </section>
               )}
 
-              {/* Notes */}
               {record.notes && (
                 <section>
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">Notes</p>
@@ -369,7 +399,6 @@ function DayDetailPanel({
                 </section>
               )}
 
-              {/* Day info */}
               <section>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">Day Info</p>
                 <div className="flex items-center gap-2 text-sm text-ink-soft">
@@ -379,8 +408,6 @@ function DayDetailPanel({
                 </div>
               </section>
             </div>
-
-            {/* Spacer for safe area */}
             <div className="h-6" />
           </div>
         </div>
@@ -420,15 +447,10 @@ function TimelineItem({
 }) {
   return (
     <div className="relative flex gap-3 pb-4">
-      {/* Connector line */}
       {!isLast && <div className="absolute left-[15px] top-8 bottom-0 w-px bg-border" />}
-
-      {/* Icon */}
       <div className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${bg}`}>
         <Icon size={14} className={color} />
       </div>
-
-      {/* Content */}
       <div className="flex-1 pt-1">
         <div className="flex items-center justify-between">
           <p className="text-sm font-medium text-ink">{time ? formatTime(time) : '—'}</p>
@@ -440,13 +462,7 @@ function TimelineItem({
   );
 }
 
-function StatBox({
-  label, value, highlight,
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-}) {
+function StatBox({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div className="text-center">
       <p className={`font-serif text-lg font-semibold ${highlight ? 'text-amber' : 'text-ink'}`}>{value}</p>
@@ -455,20 +471,336 @@ function StatBox({
   );
 }
 
-// ──────────────────────────────────────────────────────────
-// Main Component
-// ──────────────────────────────────────────────────────────
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-ink-soft/5 p-3 text-center">
+      <p className="text-xs font-medium text-ink">{value}</p>
+      <p className="text-[10px] text-ink-faint uppercase tracking-wider">{label}</p>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// CLOCK-IN HERO CARD — Greythr-inspired attendance widget
+// ═══════════════════════════════════════════════════════════
+
+function ClockInHeroCard({
+  today,
+  todayLoading,
+  isPending,
+  error,
+  onClockIn,
+  onClockOut,
+  profile,
+}: {
+  today: TodayRecord | null;
+  todayLoading: boolean;
+  isPending: boolean;
+  error: any;
+  onClockIn: () => void;
+  onClockOut: () => void;
+  profile?: { shift?: { name: string; startTime: string; endTime: string } | null } | null;
+}) {
+  const now = new Date();
+  const todayStr = now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  const isClockedIn = !!today?.checkIn;
+  const isClockedOut = !!today?.checkOut;
+  const status = today?.status || 'NOT_CLOCKED_IN';
+
+  // Worked progress — as a percentage of a standard 8h day
+  const workedMinutes = today?.workedMinutes ?? 0;
+  const workedProgress = Math.min((workedMinutes / (8 * 60)) * 100, 100);
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-border bg-white shadow-sm transition-all duration-300">
+      {/* Accent gradient header */}
+      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-accent via-accent/60 to-accent-soft" />
+
+      <div className="p-6 sm:p-8">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          {/* Left: Greeting + Shift Info */}
+          <div className="flex-1 space-y-4">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-ink-faint">{todayStr}</p>
+              <h2 className="mt-1 font-serif text-2xl font-semibold text-ink">
+                {isClockedIn ? 'Good work today!' : 'Ready to start your day?'}
+              </h2>
+            </div>
+
+            {/* Shift info */}
+            {profile?.shift ? (
+              <div className="flex items-center gap-3 text-sm text-ink-soft">
+                <div className="flex items-center gap-1.5 rounded-lg bg-accent-soft px-3 py-1.5">
+                  <Clock size={14} className="text-accent" />
+                  <span className="font-medium text-accent">{profile.shift.name}</span>
+                </div>
+                <span>{profile.shift.startTime} – {profile.shift.endTime}</span>
+              </div>
+            ) : (
+              <p className="text-sm text-ink-faint">No shift assigned</p>
+            )}
+
+            {/* Today's timeline */}
+            <div className="flex flex-wrap items-center gap-6">
+              <div className="flex items-center gap-3">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                  isClockedIn ? 'bg-accent-soft' : 'bg-ink-soft/5'
+                }`}>
+                  <LogIn size={18} className={isClockedIn ? 'text-accent' : 'text-ink-faint'} />
+                </div>
+                <div>
+                  <p className="text-xs text-ink-faint">Clock In</p>
+                  <p className="font-serif text-lg font-semibold text-ink">
+                    {formatTime(today?.checkIn)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Animated connector dots */}
+              <div className="hidden sm:flex items-center gap-1">
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className={`h-1.5 w-1.5 rounded-full transition-all duration-500 ${
+                      isClockedIn ? 'bg-accent/40' : 'bg-border'
+                    }`}
+                    style={{ animationDelay: `${i * 200}ms` }}
+                  />
+                ))}
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                  isClockedOut ? 'bg-accent-soft' : isClockedIn ? 'bg-amber-soft' : 'bg-ink-soft/5'
+                }`}>
+                  <LogOut size={18} className={
+                    isClockedOut ? 'text-accent' : isClockedIn ? 'text-amber' : 'text-ink-faint'
+                  } />
+                </div>
+                <div>
+                  <p className="text-xs text-ink-faint">Clock Out</p>
+                  <p className="font-serif text-lg font-semibold text-ink">
+                    {formatTime(today?.checkOut)}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Worked hours bar */}
+            {isClockedIn && (
+              <div className="space-y-1.5 max-w-xs">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-ink-soft">
+                    <Timer size={12} className="mr-1 inline" />
+                    {formatDuration(workedMinutes)} worked
+                  </span>
+                  <span className="text-ink-faint">{Math.round(workedProgress)}% of 8h</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-ink-soft/10">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-accent to-accent-light transition-all duration-700 ease-out"
+                    style={{ width: `${workedProgress}%` }}
+                  />
+                </div>
+                <div className="flex items-center gap-3 text-[10px] text-ink-faint">
+                  {today?.breakMinutes != null && today.breakMinutes > 0 && (
+                    <span><Coffee size={10} className="mr-0.5 inline" /> Break: {formatDuration(today.breakMinutes)}</span>
+                  )}
+                  {today?.overtimeMinutes != null && today.overtimeMinutes > 0 && (
+                    <span className="text-accent">+ OT: {formatDuration(today.overtimeMinutes)}</span>
+                  )}
+                  {today?.lateMinutes != null && today.lateMinutes > 0 && (
+                    <span className="text-amber">Late: {today.lateMinutes}m</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Status badges */}
+            {isClockedIn && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={statusTone(status)} className="text-[10px]">
+                  {status.replace('_', ' ')}
+                </Badge>
+                {today?.source && (
+                  <Badge tone="default" className="text-[10px]">
+                    via {today.source}
+                  </Badge>
+                )}
+                {today?.checkInLat && (
+                  <Badge tone="success" className="text-[10px]">
+                    <MapPin size={8} className="mr-0.5" /> GPS Verified
+                  </Badge>
+                )}
+                <Link
+                  href="/ess/attendance/regularization"
+                  className="text-xs text-accent hover:underline flex items-center gap-0.5"
+                >
+                  Regularize <ArrowRight size={10} />
+                </Link>
+              </div>
+            )}
+          </div>
+
+          {/* Right: Clock In/Out Button — Big, Animated */}
+          <div className="flex flex-col items-center gap-3">
+            {todayLoading ? (
+              <div className="skeleton h-28 w-28 rounded-full" />
+            ) : (
+              <>
+                {!isClockedIn ? (
+                  /* Big Clock In button — pulsing, inviting */
+                  <button
+                    onClick={onClockIn}
+                    disabled={isPending}
+                    className="group relative flex h-32 w-32 flex-col items-center justify-center rounded-full bg-gradient-to-br from-accent to-accent-hover text-white shadow-lg shadow-accent/30 transition-all duration-300 hover:shadow-xl hover:shadow-accent/40 hover:scale-105 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {/* Pulsing ring */}
+                    <span className="absolute inset-0 rounded-full bg-accent/20 animate-ping" />
+                    <span className="relative flex flex-col items-center">
+                      <LogIn size={28} className="mb-1 transition-transform group-hover:translate-y-[-2px]" />
+                      <span className="text-sm font-semibold">Clock In</span>
+                    </span>
+                  </button>
+                ) : !isClockedOut ? (
+                  /* Big Clock Out button */
+                  <button
+                    onClick={onClockOut}
+                    disabled={isPending}
+                    className="group relative flex h-32 w-32 flex-col items-center justify-center rounded-full bg-gradient-to-br from-amber to-amber/80 text-white shadow-lg shadow-amber/30 transition-all duration-300 hover:shadow-xl hover:shadow-amber/40 hover:scale-105 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <LogOut size={28} className="mb-1 transition-transform group-hover:translate-y-[2px]" />
+                    <span className="text-sm font-semibold">Clock Out</span>
+                  </button>
+                ) : (
+                  /* Already clocked out — show checkmark */
+                  <div className="flex h-32 w-32 flex-col items-center justify-center rounded-full bg-accent-soft text-accent">
+                    <CircleCheckBig size={32} className="mb-1" />
+                    <span className="text-sm font-semibold">Done</span>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Small hint text */}
+            {!isClockedOut && (
+              <p className="text-[10px] text-ink-faint text-center max-w-[140px] leading-tight">
+                {isPending ? '⏳ Processing...' : isClockedIn ? 'Don\'t forget to clock out!' : 'Tap to start your shift'}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Error message */}
+        {error && (
+          <div className="mt-4 rounded-lg bg-danger-soft px-4 py-2.5 text-sm text-danger">
+            {error?.response?.data?.message || error?.message || 'Something went wrong.'}
+          </div>
+        )}
+
+        {/* Quick links row */}
+        <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-border pt-4">
+          <Link
+            href="/ess/attendance/report"
+            className="flex items-center gap-1.5 rounded-lg bg-ink-soft/5 px-3 py-2 text-xs font-medium text-ink-soft hover:bg-accent-soft hover:text-accent transition-colors"
+          >
+            <BarChart3 size={14} />
+            View Report
+          </Link>
+          <Link
+            href="/ess/leave"
+            className="flex items-center gap-1.5 rounded-lg bg-ink-soft/5 px-3 py-2 text-xs font-medium text-ink-soft hover:bg-accent-soft hover:text-accent transition-colors"
+          >
+            <CalendarDays size={14} />
+            Apply Leave
+          </Link>
+          <Link
+            href="/ess/attendance/regularization"
+            className="flex items-center gap-1.5 rounded-lg bg-ink-soft/5 px-3 py-2 text-xs font-medium text-ink-soft hover:bg-accent-soft hover:text-accent transition-colors"
+          >
+            <FileText size={14} />
+            Regularize
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═══════════════════════════════════════════════════════════
 
 export default function AttendanceCalendarPage() {
+  const queryClient = useQueryClient();
+  const deviceIdRef = useRef(generateDeviceId());
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
+  // ── Queries ──
+
+  // Today's record (for clock-in/out)
+  const { data: today, isLoading: todayLoading } = useQuery({
+    queryKey: ['me', 'today'],
+    queryFn: () => unwrap<TodayRecord | null>(api.get('/attendance/me/today')),
+    refetchInterval: 30_000, // Poll every 30s
+  });
+
+  // Profile for shift info
+  const { data: profile } = useQuery({
+    queryKey: ['me', 'profile'],
+    queryFn: () => unwrap<any>(api.get('/me/profile')),
+  });
+
+  // Calendar data
   const { data, isLoading } = useQuery({
     queryKey: ['me', 'attendance-calendar', year, month],
     queryFn: () => unwrap<CalendarData>(api.get('/me/attendance/calendar', { params: { year, month } })),
   });
+
+  // ── Mutations ──
+
+  const clockInMut = useMutation({
+    mutationFn: async () => {
+      const coords = await getCurrentPosition();
+      const body: Record<string, any> = {
+        source: coords ? 'GPS' : 'WEB',
+        deviceId: deviceIdRef.current,
+        deviceName: 'Web Browser',
+        browserInfo: navigator.userAgent,
+        ...(coords && { lat: coords.lat, lng: coords.lng }),
+        locationAccuracy: coords ? coords.accuracy : undefined,
+      };
+      return api.post('/attendance/clock-in', body);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me', 'today'] });
+      queryClient.invalidateQueries({ queryKey: ['me', 'attendance-calendar'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+
+  const clockOutMut = useMutation({
+    mutationFn: async () => {
+      const coords = await getCurrentPosition();
+      const body: Record<string, any> = {
+        deviceId: deviceIdRef.current,
+        deviceName: 'Web Browser',
+        browserInfo: navigator.userAgent,
+        ...(coords && { lat: coords.lat, lng: coords.lng }),
+      };
+      return api.post('/attendance/clock-out', body);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me', 'today'] });
+      queryClient.invalidateQueries({ queryKey: ['me', 'attendance-calendar'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+
+  // ── Calendar Navigation ──
 
   const prevMonth = useCallback(() => {
     setSelectedDay(null);
@@ -485,7 +817,6 @@ export default function AttendanceCalendarPage() {
   const firstDay = new Date(year, month - 1, 1).getDay();
   const daysInMonth = new Date(year, month, 0).getDate();
 
-  // Build map of day -> record/holiday
   const recordMap = useMemo(() => {
     const map = new Map<string, CalendarDayRecord>();
     if (!data?.records) return map;
@@ -504,7 +835,6 @@ export default function AttendanceCalendarPage() {
     return map;
   }, [data]);
 
-  // Generate calendar cells
   const cells = useMemo(() => {
     const result: (number | null)[] = [];
     for (let i = 0; i < firstDay; i++) result.push(null);
@@ -519,11 +849,9 @@ export default function AttendanceCalendarPage() {
     return rec.status;
   }, [recordMap, holidayMap]);
 
-  // Selected record for detail panel
   const selectedRecord = selectedDay != null ? recordMap.get(selectedDay.toString()) ?? null : null;
   const selectedHoliday = selectedDay != null ? holidayMap.get(selectedDay.toString()) ?? null : null;
 
-  // Monthly summary
   const monthlySummary = useMemo(() => {
     if (!data?.records) return null;
     const counts: Record<string, number> = {};
@@ -533,14 +861,50 @@ export default function AttendanceCalendarPage() {
     return counts;
   }, [data]);
 
-  return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <h1 className="font-serif text-2xl font-semibold text-ink">Attendance Calendar</h1>
+  const isTodayInView = month === now.getMonth() + 1 && year === now.getFullYear();
 
+  const error = (clockInMut.error as any) || (clockOutMut.error as any);
+  const isPending = clockInMut.isPending || clockOutMut.isPending;
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-6 page-enter">
+      {/* Page header */}
+      <div className="flex items-center justify-between">
+        <h1 className="font-serif text-2xl font-semibold text-ink">Attendance</h1>
+        <Link
+          href="/ess/attendance/report"
+          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-ink-soft hover:bg-accent-soft hover:text-accent transition-colors"
+        >
+          <BarChart3 size={14} />
+          Monthly Report
+          <ArrowRight size={12} />
+        </Link>
+      </div>
+
+      {/* ─── GREYTHR-STYLE CLOCK-IN HERO ─── */}
+      <ClockInHeroCard
+        today={today ?? null}
+        todayLoading={todayLoading}
+        isPending={isPending}
+        error={error}
+        onClockIn={() => clockInMut.mutate()}
+        onClockOut={() => clockOutMut.mutate()}
+        profile={profile}
+      />
+
+      {/* ─── MONTHLY CALENDAR ─── */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>{MONTHS[month - 1]} {year}</CardTitle>
+            <div className="flex items-center gap-3">
+              <CardTitle>{MONTHS[month - 1]} {year}</CardTitle>
+              {isTodayInView && (
+                <span className="flex h-2 w-2">
+                  <span className="absolute inline-flex h-2 w-2 animate-ping rounded-full bg-accent/40" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+                </span>
+              )}
+            </div>
             <div className="flex gap-1">
               <Button variant="outline" size="sm" onClick={prevMonth}><ChevronLeft size={14} /></Button>
               <Button variant="outline" size="sm" onClick={nextMonth}><ChevronRight size={14} /></Button>
@@ -571,7 +935,7 @@ export default function AttendanceCalendarPage() {
                   const holidayName = day ? holidayMap.get(day.toString()) : null;
                   const rec = day ? recordMap.get(day.toString()) : null;
                   const isSelected = day === selectedDay;
-                  const isToday = day === now.getDate() && month === now.getMonth() + 1 && year === now.getFullYear();
+                  const isToday = day === now.getDate() && isTodayInView;
 
                   return (
                     <button
@@ -625,7 +989,6 @@ export default function AttendanceCalendarPage() {
                 })}
               </div>
 
-              {/* Legend */}
               <div className="mt-4 flex flex-wrap gap-3 text-xs text-ink-faint">
                 <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded-sm bg-accent" /> Present</span>
                 <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded-sm bg-danger-soft text-danger" /> Absent</span>
@@ -638,7 +1001,7 @@ export default function AttendanceCalendarPage() {
         </CardContent>
       </Card>
 
-      {/* Monthly Summary */}
+      {/* ─── MONTHLY SUMMARY ─── */}
       {monthlySummary && (
         <Card>
           <CardHeader><CardTitle>Monthly Summary</CardTitle></CardHeader>
@@ -691,21 +1054,12 @@ export default function AttendanceCalendarPage() {
         </Card>
       )}
 
-      {/* Day Detail Slide-Over Panel */}
+      {/* ─── DAY DETAIL SLIDE-OVER ─── */}
       <DayDetailPanel
         record={selectedRecord}
         holidayName={selectedHoliday}
         onClose={() => setSelectedDay(null)}
       />
-    </div>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg bg-ink-soft/5 p-3 text-center">
-      <p className="text-xs font-medium text-ink">{value}</p>
-      <p className="text-[10px] text-ink-faint uppercase tracking-wider">{label}</p>
     </div>
   );
 }

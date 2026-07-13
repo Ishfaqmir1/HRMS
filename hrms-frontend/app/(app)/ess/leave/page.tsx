@@ -66,6 +66,14 @@ export default function LeaveHistoryPage() {
     },
   });
 
+  const cancelLeaveMut = useMutation({
+    mutationFn: (id: string) => api.post(`/leave/requests/${id}/cancel`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me', 'leave-history'] });
+      queryClient.invalidateQueries({ queryKey: ['me', 'leave-balances'] });
+    },
+  });
+
   const resetForm = useCallback(() => {
     setLeaveTypeId('');
     setStartDate('');
@@ -173,6 +181,7 @@ export default function LeaveHistoryPage() {
                       <th className="px-5 py-3">Reason</th>
                       <th className="px-5 py-3">Status</th>
                       <th className="px-5 py-3">Date</th>
+                      <th className="px-5 py-3"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -186,7 +195,7 @@ export default function LeaveHistoryPage() {
                           <td className="px-5 py-3 text-sm text-ink">{formatDate(lr.startDate)}</td>
                           <td className="px-5 py-3 text-sm text-ink">{formatDate(lr.endDate)}</td>
                           <td className="px-5 py-3 text-sm font-medium text-ink">{lr.totalDays}</td>
-                          <td className="max-w-[180px] truncate px-5 py-3 text-sm text-ink-soft" title={lr.reason || ''}>
+                          <td className="max-w-[160px] truncate px-5 py-3 text-sm text-ink-soft" title={lr.reason || ''}>
                             {lr.reason || '—'}
                           </td>
                           <td className="px-5 py-3">
@@ -197,6 +206,20 @@ export default function LeaveHistoryPage() {
                           </td>
                           <td className="px-5 py-3 text-xs text-ink-faint">
                             {new Date(lr.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                          </td>
+                          <td className="px-5 py-3">
+                            {lr.status === 'PENDING' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => cancelLeaveMut.mutate(lr.id)}
+                                isLoading={cancelLeaveMut.isPending}
+                                className="h-7 text-[10px] text-danger hover:text-danger"
+                              >
+                                <XCircle size={10} className="mr-1" />
+                                Cancel
+                              </Button>
+                            )}
                           </td>
                         </tr>
                       );
@@ -226,6 +249,18 @@ export default function LeaveHistoryPage() {
                       </div>
                       {lr.reason && (
                         <p className="text-xs text-ink-soft line-clamp-2">{lr.reason}</p>
+                      )}
+                      {lr.status === 'PENDING' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => cancelLeaveMut.mutate(lr.id)}
+                          isLoading={cancelLeaveMut.isPending}
+                          className="h-7 text-[10px] text-danger px-0 hover:text-danger"
+                        >
+                          <XCircle size={10} className="mr-1" />
+                          Cancel
+                        </Button>
                       )}
                     </div>
                   );

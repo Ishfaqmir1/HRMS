@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useMemo, useCallback } from 'react';
+import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   MapPin, QrCode, Camera, Smartphone, Shield, ChevronDown, ChevronUp,
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { api, unwrap } from '@/lib/api-client';
 import { AttendanceRecord, PaginatedResult, Department, Employee } from '@/lib/types';
+import { STALE_TIMES, REFETCH_INTERVALS } from '@/lib/react-query';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge, statusTone } from '@/components/ui/badge';
@@ -194,7 +195,6 @@ export default function AttendancePage() {
   const [qrCode, setQrCode] = useState<string | null>(null);
 
   // ── Filters ──
-  const [filterEmployee, setFilterEmployee] = useState('');
   const [filterDepartment, setFilterDepartment] = useState('');
   const [filterFrom, setFilterFrom] = useState(getWeekAgoString());
   const [filterTo, setFilterTo] = useState(getTodayString());
@@ -211,26 +211,38 @@ export default function AttendancePage() {
   const [manualForm, setManualForm] = useState<ManualEntryForm>(EMPTY_MANUAL_FORM);
   const [editForm, setEditForm] = useState<EditRecordForm>(EMPTY_EDIT_FORM);
 
+  // ── Filter debounce (300ms) ──
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchInput), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
   // ── Queries ──
 
-  // Employees for manual entry dialog
+  // Employees for manual entry dialog (cached 2min — rarely changes)
   const { data: employeesForManual } = useQuery({
     queryKey: ['employees', 'list', { limit: 500 }],
     queryFn: () => unwrap<PaginatedResult<Employee>>(api.get('/employees', { params: { limit: 500 } })),
     select: (data) => data.items,
+    staleTime: STALE_TIMES.EMPLOYEES,
   });
 
-  // Departments for filter dropdown (paginated API)
+  // Departments for filter dropdown (cached 10min — master data)
   const { data: departments } = useQuery({
     queryKey: ['departments'],
     queryFn: () => unwrap<PaginatedResult<Department>>(api.get('/departments')),
     select: (data) => data.items,
+    staleTime: STALE_TIMES.MASTER_DATA,
   });
 
-  // Today's attendance (self-service)
+  // Today's attendance (self-service) — fresh every 15s
   const { data: today, isLoading: todayLoading } = useQuery({
     queryKey: ['attendance', 'today'],
     queryFn: () => unwrap<AttendanceRecord | null>(api.get('/attendance/me/today')),
+    staleTime: STALE_TIMES.ATTENDANCE,
+    refetchInterval: REFETCH_INTERVALS.ATTENDANCE_TODAY,
   });
 
   // Self history (compact, for the self-service panel)
@@ -239,6 +251,7 @@ export default function AttendancePage() {
     queryFn: () => unwrap<PaginatedResult<AttendanceRecord>>(
       api.get('/attendance/me/history', { params: { limit: 5 } }),
     ),
+    staleTime: STALE_TIMES.ATTENDANCE,
   });
 
   // Management list — all attendance records for the company with filters
@@ -246,16 +259,17 @@ export default function AttendancePage() {
     const params: Record<string, any> = { page, limit };
     if (filterFrom) params.from = filterFrom;
     if (filterTo) params.to = filterTo;
-    if (filterEmployee) params.employeeId = filterEmployee;
+    if (debouncedSearch) params.employeeId = debouncedSearch;
     if (filterDepartment) params.departmentId = filterDepartment;
     return params;
-  }, [page, limit, filterFrom, filterTo, filterEmployee, filterDepartment]);
+  }, [page, limit, filterFrom, filterTo, debouncedSearch, filterDepartment]);
 
   const { data: rawRecords, isLoading: listLoading, isError: listError, error: listErr } = useQuery({
     queryKey: ['attendance', 'all', listParams],
     queryFn: () => unwrap<PaginatedResult<AttendanceRecordWithEmployee>>(
       api.get('/attendance', { params: listParams }),
     ),
+    staleTime: STALE_TIMES.ATTENDANCE,
   });
 
   // Client-side status filtering (backend doesn't support status param)
@@ -269,7 +283,7 @@ export default function AttendancePage() {
     };
   }, [rawRecords, filterStatus, limit]);
 
-  // Today's summary stats (fetch today's records and compute)
+  // Today's summary stats — cached 30s, auto-refresh 60s
   const { data: todayStats, isLoading: statsLoading } = useQuery({
     queryKey: ['attendance', 'today-stats', filterFrom, filterTo],
     queryFn: async (): Promise<AttendanceSummary> => {
@@ -286,19 +300,23 @@ export default function AttendancePage() {
         onLeave: items.filter((r) => r.status === 'ON_LEAVE').length,
       };
     },
+    staleTime: STALE_TIMES.DASHBOARD,
+    refetchInterval: REFETCH_INTERVALS.DASHBOARD,
   });
 
-  // Devices for security
+  // Devices for security (cached 5min — rarely changes)
   const { data: devices } = useQuery({
     queryKey: ['attendance-security', 'devices'],
     queryFn: async () => { const res = await api.get('/attendance-security/devices'); return res.data?.data || res.data; },
     retry: false,
+    staleTime: STALE_TIMES.SETTINGS,
   });
 
   const { data: securityConfig } = useQuery({
     queryKey: ['attendance-security', 'config-summary'],
     queryFn: async () => { const res = await api.get('/attendance-security/config/summary'); return res.data?.data || res.data; },
     retry: false,
+    staleTime: STALE_TIMES.SETTINGS,
   });
 
   // ── Invalidation ──
@@ -406,7 +424,7 @@ export default function AttendancePage() {
 
   // ── Filter reset ──
   function resetFilters() {
-    setFilterEmployee('');
+    setSearchInput('');
     setFilterDepartment('');
     setFilterFrom(getWeekAgoString());
     setFilterTo(getTodayString());
@@ -418,8 +436,6 @@ export default function AttendancePage() {
   const error = (clockInMut.error as any) || (clockOutMut.error as any);
   const isPending = clockInMut.isPending || clockOutMut.isPending;
   const isDeviceRegistered = Array.isArray(devices) && devices.length > 0;
-
-  const totalPages = allRecords?.meta?.totalPages ?? 1;
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -626,8 +642,8 @@ export default function AttendancePage() {
                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" />
                     <Input
                       placeholder="Search employee..."
-                      value={filterEmployee}
-                      onChange={(e) => { setFilterEmployee(e.target.value); setPage(1); }}
+                      value={searchInput}
+                      onChange={(e) => { setSearchInput(e.target.value); setPage(1); }}
                       className="pl-8 h-9 text-sm"
                     />
                   </div>

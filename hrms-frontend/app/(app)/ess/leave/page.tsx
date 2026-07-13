@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap } from '@/lib/api-client';
 import { PaginatedResult, LeaveRequest, LeaveBalance } from '@/lib/types';
+import { STALE_TIMES } from '@/lib/react-query';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -45,11 +46,13 @@ export default function LeaveHistoryPage() {
   const { data: leaveData, isLoading } = useQuery({
     queryKey: ['me', 'leave-history', page],
     queryFn: () => unwrap<PaginatedResult<LeaveRequest>>(api.get('/me/leave/history', { params: { page, limit: 20 } })),
+    staleTime: STALE_TIMES.LEAVE,
   });
 
   const { data: balances, isLoading: balancesLoading } = useQuery({
     queryKey: ['me', 'leave-balances'],
     queryFn: () => unwrap<LeaveBalance[]>(api.get('/me/leave/balances')),
+    staleTime: STALE_TIMES.LEAVE,
   });
 
   // ── Mutations ──

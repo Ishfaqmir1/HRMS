@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, useRef, type ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { ROUTE_GUARDS, type RouteGuard } from '@/config/menu.config';
@@ -47,6 +47,8 @@ export function ProtectedRoute({ children, fallback }: ProtectedRouteProps) {
   const pathname = usePathname();
   const { isLoaded, isAuthenticated, roles, permissions, featureMap, loading } = useAuth();
   const [authorized, setAuthorized] = useState(false);
+  const prevPathname = useRef(pathname);
+  const hasBeenAuthorized = useRef(false);
 
   useEffect(() => {
     if (!isLoaded || loading) return;
@@ -57,10 +59,41 @@ export function ProtectedRoute({ children, fallback }: ProtectedRouteProps) {
       return;
     }
 
+    // Skip re-check on route changes if already authorized (avoids spinner flash)
+    if (hasBeenAuthorized.current && pathname !== prevPathname.current) {
+      prevPathname.current = pathname;
+      // Quick check: if route guard exists, verify; otherwise keep authorized
+      const guard = findGuard(pathname);
+      if (!guard) {
+        setAuthorized(true);
+        return;
+      }
+      // Only do a full check if permissions/roles might block this route
+      if (guard.permissions && guard.permissions.length > 0) {
+        const hasPermission = guard.permissions.some((p) => permissions.includes(p));
+        if (!hasPermission && !roles.includes('super-admin')) {
+          router.replace('/dashboard');
+          return;
+        }
+      }
+      if (guard.roles && guard.roles.length > 0) {
+        const hasRole = guard.roles.some((r) => roles.includes(r));
+        if (!hasRole && !roles.includes('super-admin')) {
+          router.replace('/dashboard');
+          return;
+        }
+      }
+      setAuthorized(true);
+      return;
+    }
+
+    prevPathname.current = pathname;
+
     const guard = findGuard(pathname);
 
     // No guard config found — allow access
     if (!guard) {
+      hasBeenAuthorized.current = true;
       setAuthorized(true);
       return;
     }
@@ -94,11 +127,28 @@ export function ProtectedRoute({ children, fallback }: ProtectedRouteProps) {
       }
     }
 
+    hasBeenAuthorized.current = true;
     setAuthorized(true);
   }, [isLoaded, isAuthenticated, loading, pathname, roles, permissions, featureMap, router]);
 
-  // Show fallback or nothing while checking
-  if (!isLoaded || loading || !authorized) {
+  // Show fallback or nothing while checking (only on initial load, not route changes)
+  if (!isLoaded || loading) {
+    return fallback ?? (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-accent" />
+          <p className="text-sm text-gray-500">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // On route changes, keep showing children while background-checking (no flash)
+  if (!authorized && hasBeenAuthorized.current) {
+    return <>{children}</>;
+  }
+
+  if (!authorized) {
     return fallback ?? (
       <div className="flex min-h-[50vh] items-center justify-center">
         <div className="flex flex-col items-center gap-3">

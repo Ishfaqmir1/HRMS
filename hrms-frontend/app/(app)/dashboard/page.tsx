@@ -25,6 +25,7 @@ export default function DashboardPage() {
     return (
       <div className="mx-auto max-w-6xl space-y-6">
         <div className="space-y-2">
+          <h1 className="sr-only">Dashboard</h1>
           <div className="skeleton h-7 w-32" />
           <div className="skeleton h-4 w-48" />
         </div>
@@ -67,18 +68,18 @@ export default function DashboardPage() {
         <div className="relative z-10 flex items-center justify-between">
           <div>
             <div className="mb-1 flex items-center gap-2">
-              <Sparkles size={16} className="text-white/70" />
-              <span className="text-sm font-medium text-white/70">Welcome back</span>
+              <Sparkles size={16} className="text-white" />
+              <span className="text-sm font-medium text-white">Welcome back</span>
             </div>
             <h1 className="font-serif text-2xl font-semibold tracking-tight sm:text-3xl">
               {profile.name}
             </h1>
-            <p className="mt-1 text-sm text-white/60">
+            <p className="mt-1 text-sm text-white">
               {profile.designation || 'Employee'}
               {profile.department ? <span className="text-white/40"> · {profile.department}</span> : ''}
             </p>
           </div>
-          <div className="hidden rounded-xl bg-white/10 px-4 py-2 text-sm font-medium text-white/80 backdrop-blur-sm sm:block">
+          <div className="hidden rounded-xl bg-white/20 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm sm:block">
             {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
           </div>
         </div>

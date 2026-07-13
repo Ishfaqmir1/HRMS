@@ -42,6 +42,14 @@ const mockPolicyService = {
   getPolicy: jest.fn(),
 };
 
+const mockCache = {
+  get: jest.fn(),
+  set: jest.fn(),
+  del: jest.fn(),
+  delPattern: jest.fn().mockResolvedValue(undefined),
+  getOrSet: jest.fn(),
+};
+
 import { AttendanceService } from './attendance.service';
 
 describe('AttendanceService — Comprehensive Edge Case Tests', () => {
@@ -161,6 +169,7 @@ describe('AttendanceService — Comprehensive Edge Case Tests', () => {
 
     service = new AttendanceService(
       mockPrisma as any,
+      mockCache as any,
       mockGeoFenceService as any,
       mockSecurityService as any,
       mockPolicyService as any,

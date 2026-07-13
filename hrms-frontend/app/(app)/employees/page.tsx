@@ -51,13 +51,19 @@ export default function EmployeesPage() {
   const [copied, setCopied] = useState(false);
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    isError,
+    error: fetchError,
+  } = useQuery({
     queryKey: ['employees', page, search],
     queryFn: () =>
       unwrap<PaginatedResult<Employee>>(
         api.get('/employees', { params: { page, limit: 10, search: search || undefined } }),
       ),
     staleTime: STALE_TIMES.EMPLOYEES,
+    retry: 1,
   });
 
   const {
@@ -237,7 +243,21 @@ export default function EmployeesPage() {
             className="mb-4 max-w-sm"
           />
 
-          {isLoading && <p className="text-sm text-ink-faint">Loading employees…</p>}
+          {isLoading && (
+            <div className="flex items-center justify-center py-8">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-accent" />
+              <p className="ml-2 text-sm text-ink-faint">Loading employees…</p>
+            </div>
+          )}
+
+          {isError && !isLoading && (
+            <div className="rounded-xl border border-danger/20 bg-danger/5 px-4 py-4 text-sm text-danger">
+              <p>Failed to load employees.</p>
+              <p className="mt-1 text-xs text-danger/70">
+                {(fetchError as any)?.response?.data?.message || 'Please try again or check your network connection.'}
+              </p>
+            </div>
+          )}
 
           {data && (
             <>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, type ReactNode } from 'react';
+import { useEffect, useMemo, type ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { ROUTE_GUARDS, type RouteGuard } from '@/config/menu.config';

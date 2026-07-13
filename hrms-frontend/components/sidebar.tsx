@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { clsx } from 'clsx';
@@ -98,13 +99,17 @@ export function Sidebar() {
   const pathname = usePathname();
   const { profile, roles, permissions, featureMap, isLoaded } = useAuth();
 
-  // Filter sections and items based on user's access
-  const visibleSections = MENU_CONFIG
-    .filter((section) => sectionVisible(section, roles, permissions, featureMap))
-    .map((section) => ({
-      ...section,
-      items: filterItems(section.items, roles, permissions, featureMap),
-    }));
+  // Memoize filtered sections to avoid re-computation on every render
+  const visibleSections = useMemo(
+    () =>
+      MENU_CONFIG
+        .filter((section) => sectionVisible(section, roles, permissions, featureMap))
+        .map((section) => ({
+          ...section,
+          items: filterItems(section.items, roles, permissions, featureMap),
+        })),
+    [roles, permissions, featureMap],
+  );
 
   const initials = profile
     ? `${profile.firstName?.[0] || ''}${profile.lastName?.[0] || ''}`.toUpperCase()

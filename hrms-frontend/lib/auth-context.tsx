@@ -136,6 +136,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      // Decode JWT first to check permissions before making API calls
+      const jwtFallback = decodeJwt();
+
+      // Only fetch feature flags if user has company.read (skip for employees → avoids 403)
+      const canReadCompany = jwtFallback?.permissions?.includes('company.read');
+      const featuresPromise = canReadCompany
+        ? unwrap<FeatureFlag[]>(api.get('/billing/features')).catch(() => [] as FeatureFlag[])
+        : Promise.resolve([] as FeatureFlag[]);
+
       // Fetch auth context (roles + permissions), profile, and feature flags in parallel
       const [authMe, profile, features] = await Promise.all([
         unwrap<{
@@ -147,11 +156,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           permissions: string[];
         }>(api.get('/auth/me')).catch(() => null),
         unwrap<UserProfile>(api.get('/me/profile')).catch(() => null),
-        unwrap<FeatureFlag[]>(api.get('/billing/features')).catch(() => [] as FeatureFlag[]),
+        featuresPromise,
       ]);
 
       // Fallback: decode JWT payload for basic info if /auth/me fails
-      const tokenPayload = authMe ?? decodeJwt();
+      const tokenPayload = authMe ?? jwtFallback;
       const roles = tokenPayload?.roles ?? [];
       const permissions = tokenPayload?.permissions ?? [];
 

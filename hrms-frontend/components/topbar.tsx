@@ -1,7 +1,8 @@
 'use client';
 
-import { LogOut, Menu, Bell } from 'lucide-react';
-import { api } from '@/lib/api-client';
+import { useState, useEffect } from 'react';
+import { LogOut, Menu, Bell, Building2 } from 'lucide-react';
+import { api, unwrap } from '@/lib/api-client';
 import { getRefreshToken } from '@/lib/auth';
 import { useAuth } from '@/lib/auth-context';
 import { useAuthActions } from '@/lib/auth-context';
@@ -14,6 +15,13 @@ interface TopbarProps {
 export function Topbar({ onMenuClick }: TopbarProps) {
   const { profile } = useAuth();
   const { signOut } = useAuthActions();
+  const [branding, setBranding] = useState<{ logoUrl?: string | null; companyName?: string | null } | null>(null);
+
+  useEffect(() => {
+    unwrap<{ logoUrl?: string | null; companyName?: string | null }>(api.get('/billing/branding'))
+      .then(data => setBranding(data))
+      .catch(() => {}); // Silently fail — no company branding is fine
+  }, []);
 
   async function handleLogout() {
     const refreshToken = getRefreshToken();
@@ -35,6 +43,24 @@ export function Topbar({ onMenuClick }: TopbarProps) {
       >
         <Menu size={20} />
       </button>
+
+      {/* Company Logo (left side) — greythr-style */}
+      {branding?.logoUrl ? (
+        <img
+          src={branding.logoUrl}
+          alt={branding.companyName || 'Company logo'}
+          className="h-8 w-auto max-w-[120px] object-contain"
+        />
+      ) : branding?.companyName ? (
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
+            <Building2 size={16} className="text-accent" />
+          </div>
+          <span className="hidden text-sm font-semibold text-ink sm:inline">
+            {branding.companyName}
+          </span>
+        </div>
+      ) : null}
 
       {/* Spacer */}
       <div className="flex-1" />

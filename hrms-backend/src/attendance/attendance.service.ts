@@ -91,7 +91,10 @@ export class AttendanceService {
       // Get employee's shift + branch to determine expected start time & timezone
       const employee = await this.prisma.employee.findFirst({
         where: { id: employeeId, companyId },
-        include: { shift: true, branch: { select: { timezone: true } } },
+        select: {
+          shift: { select: { startTime: true, endTime: true } },
+          branch: { select: { timezone: true } },
+        },
       });
 
       // Determine timezone offset from branch (simplified: UTC offset in minutes)
@@ -156,14 +159,12 @@ export class AttendanceService {
         workedMinutes - policy.overtimeStartsAfterMinutes,
         policy.maxOvertimeMinutes,
       );
-    }
-
-    // Early exit detection
-    const employee = await this.prisma.employee.findFirst({
+    }    // Early exit detection: only need shift endTime — single-column select
+    const earlyExitEmployee = await this.prisma.employee.findFirst({
       where: { id: employeeId, companyId },
-      include: { shift: true },
+      select: { shift: { select: { endTime: true } } },
     });
-    const endTime = employee?.shift?.endTime || policy.defaultEndTime;
+    const endTime = earlyExitEmployee?.shift?.endTime || policy.defaultEndTime;
     const expectedEndMinutes = parseTimeToMinutes(endTime);
     const actualEndMinutes = minutesSinceMidnight(checkOutTime);
     const earlyExit = expectedEndMinutes - actualEndMinutes - policy.gracePeriodMinutes;

@@ -79,13 +79,23 @@ export class LeaveService {
   async myBalances(employeeId: string, year: number = new Date().getFullYear()) {
     return this.prisma.leaveBalance.findMany({
       where: { employeeId, year },
-      include: { leaveType: true },
+      select: {
+        id: true,
+        allocated: true,
+        used: true,
+        carriedForward: true,
+        leaveType: { select: { id: true, name: true, code: true, isPaid: true, requiresApproval: true } },
+      },
     });
   }
 
   async setBalance(companyId: string, dto: SetLeaveBalanceDto) {
-    const employee = await this.prisma.employee.findFirst({ where: { id: dto.employeeId, companyId } });
-    if (!employee) throw new NotFoundException('Employee not found in this company.');
+    // Verify employee exists — use select to only check existence
+    const employeeExists = await this.prisma.employee.findFirst({
+      where: { id: dto.employeeId, companyId },
+      select: { id: true },
+    });
+    if (!employeeExists) throw new NotFoundException('Employee not found in this company.');
 
     return this.prisma.leaveBalance.upsert({
       where: {
@@ -172,7 +182,16 @@ export class LeaveService {
         skip: query.skip,
         take: query.limit,
         orderBy: { createdAt: 'desc' },
-        include: { leaveType: true },
+        select: {
+          id: true,
+          startDate: true,
+          endDate: true,
+          totalDays: true,
+          reason: true,
+          status: true,
+          createdAt: true,
+          leaveType: { select: { id: true, name: true, code: true, isPaid: true } },
+        },
       }),
       this.prisma.leaveRequest.count({ where }),
     ]);
@@ -299,7 +318,15 @@ export class LeaveService {
   private async getPendingRequest(companyId: string, id: string) {
     const request = await this.prisma.leaveRequest.findFirst({
       where: { id, companyId },
-      include: { leaveType: true },
+      select: {
+        id: true,
+        startDate: true,
+        totalDays: true,
+        employeeId: true,
+        leaveTypeId: true,
+        status: true,
+        leaveType: { select: { id: true, isPaid: true, requiresApproval: true } },
+      },
     });
     if (!request) throw new NotFoundException('Leave request not found.');
     if (request.status !== 'PENDING') {

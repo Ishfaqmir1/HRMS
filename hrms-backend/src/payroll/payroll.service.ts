@@ -79,7 +79,21 @@ export class PayrollService {
 
     return this.prisma.employeeSalary.create({
       data: { ...dto, companyId, effectiveFrom: new Date(dto.effectiveFrom), effectiveTo: dto.effectiveTo ? new Date(dto.effectiveTo) : null },
-      include: { employee: { select: { id: true, firstName: true, lastName: true, employeeCode: true } }, structure: true },
+      select: {
+        id: true,
+        employeeId: true,
+        effectiveFrom: true,
+        effectiveTo: true,
+        basic: true,
+        housingAllowance: true,
+        transportAllowance: true,
+        medicalAllowance: true,
+        otherAllowances: true,
+        isActive: true,
+        createdAt: true,
+        employee: { select: { id: true, firstName: true, lastName: true, employeeCode: true } },
+        structure: { select: { id: true, name: true } },
+      },
     });
   }
 
@@ -98,7 +112,25 @@ export class PayrollService {
   async findOneEmployeeSalary(companyId: string, id: string) {
     const s = await this.prisma.employeeSalary.findFirst({
       where: { id, companyId },
-      include: { employee: true, structure: true },
+      select: {
+        id: true,
+        employeeId: true,
+        structureId: true,
+        effectiveFrom: true,
+        effectiveTo: true,
+        basic: true,
+        housingAllowance: true,
+        transportAllowance: true,
+        medicalAllowance: true,
+        otherAllowances: true,
+        taxPercent: true,
+        pensionPercent: true,
+        insuranceDeduction: true,
+        isActive: true,
+        createdAt: true,
+        employee: { select: { id: true, firstName: true, lastName: true, employeeCode: true } },
+        structure: { select: { id: true, name: true } },
+      },
     });
     if (!s) throw new NotFoundException('Employee salary not found.');
     return s;

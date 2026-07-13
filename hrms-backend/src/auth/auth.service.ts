@@ -304,14 +304,17 @@ export class AuthService {
     companyId: string | null,
     meta?: { ipAddress?: string; userAgent?: string },
   ): Promise<TokenPair> {
-    // Fetch user's roles and permissions to embed in JWT payload
-    // so the frontend fallback decodeJwt() can work without /auth/me
+    // Fetch user's roles, permissions, and employeeId to embed in JWT payload
+    // so the frontend fallback decodeJwt() and the PermissionsGuard can work
+    // without an extra /auth/me call.
     let roles: string[] = [];
     let permissions: string[] = [];
+    let employeeId: string | null = null;
     try {
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
         include: {
+          employee: { select: { id: true } },
           userRoles: {
             include: {
               role: {
@@ -325,6 +328,7 @@ export class AuthService {
       });
       if (user) {
         roles = user.userRoles.map((ur) => ur.role.slug);
+        employeeId = user.employee?.id ?? null;
         permissions = Array.from(
           new Set(
             user.userRoles.flatMap((ur) => ur.role.rolePermissions.map((rp) => rp.permission.code)),
@@ -335,7 +339,7 @@ export class AuthService {
       this.logger.warn(`Failed to load roles/permissions for JWT payload: ${(err as Error).message}`);
     }
 
-    const payload = { sub: userId, email, companyId, roles, permissions };
+    const payload = { sub: userId, email, companyId, employeeId, roles, permissions };
 
     const accessExpiresIn = this.configService.get<string>('jwt.accessExpiresIn')!;
     const refreshExpiresIn = this.configService.get<string>('jwt.refreshExpiresIn')!;

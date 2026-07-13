@@ -4,9 +4,6 @@ import { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, unwrap } from '@/lib/api-client';
 import { Card, CardContent } from '@/components/ui/card';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
 import dynamic from 'next/dynamic';
 import {
   Users, Building2, Briefcase, TrendingUp, BarChart3,
@@ -67,10 +64,20 @@ export default function AnalyticsPage() {
   // Initialized to null to avoid flash of content before API responds.
   const [hasAttendanceAccess, setHasAttendanceAccess] = useState<boolean | null>(null);
 
-  // ===== Existing company analytics =====
+  // ===== Existing company analytics (catch 403 gracefully) =====
   const { data, isLoading, isError } = useQuery({
     queryKey: ['analytics', 'dashboard'],
-    queryFn: () => unwrap<AnalyticsData>(api.get('/analytics/dashboard')),
+    queryFn: async () => {
+      try {
+        return await unwrap<AnalyticsData>(api.get('/analytics/dashboard'));
+      } catch (err: any) {
+        if (err?.response?.status === 403) {
+          return null; // Signals no access
+        }
+        throw err;
+      }
+    },
+    retry: false,
   });
 
   // ===== Attendance trend report (catches 403 gracefully) =====
@@ -181,7 +188,24 @@ export default function AnalyticsPage() {
       {/* ================================================================ */}
       {/* EXISTING ANALYTICS — Summary Cards + Charts                     */}
       {/* ================================================================ */}
-      {isLoading && <p className="text-sm text-ink-faint">Loading analytics...</p>}
+      {isLoading && (
+        <div className="flex items-center justify-center py-16">
+          <div className="skeleton h-8 w-48 rounded" />
+        </div>
+      )}
+
+      {!isLoading && !data && !isError && (
+        <div className="rounded-xl border border-border bg-white p-8 text-center">
+          <BarChart3 size={32} className="mx-auto mb-3 text-ink-faint/50" />
+          <p className="text-sm text-ink-faint">
+            Analytics require HR/manager access. You can view your personal{' '}
+            <Link href="/ess/attendance/report" className="text-accent hover:underline">Attendance Report</Link>,
+            {' '}<Link href="/ess/payslips" className="text-accent hover:underline">Payslips</Link>,
+            {' '}or <Link href="/ess/leave" className="text-accent hover:underline">Leave</Link>.
+          </p>
+        </div>
+      )}
+
       {isError && (
         <p className="rounded-md bg-danger-soft px-4 py-3 text-sm text-danger">
           Couldn&rsquo;t load analytics data. You may not have the required permissions.

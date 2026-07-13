@@ -4,14 +4,12 @@ import { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, unwrap } from '@/lib/api-client';
 import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import dynamic from 'next/dynamic';
 import {
-  Users, Building2, Briefcase, TrendingUp, Calendar,
-  Download, BarChart3,
+  Users, Building2, Briefcase, TrendingUp, BarChart3,
 } from 'lucide-react';
 import Link from 'next/link';
 import { getAccessToken } from '@/lib/auth';

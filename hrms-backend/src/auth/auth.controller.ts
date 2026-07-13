@@ -15,7 +15,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
-  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 requests per minute
+  @Throttle({ default: { limit: 50, ttl: 60000 } }) // 50 requests per minute
   @Post('register')
   @ApiOperation({ summary: 'Self-service tenant signup: creates a new Company + Owner user' })
   register(@Body() dto: RegisterDto) {
@@ -23,7 +23,7 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 requests per minute
+  @Throttle({ default: { limit: 200, ttl: 60000 } }) // 200 requests per minute
   @Post('login')
   @ApiOperation({ summary: 'Authenticate and receive an access/refresh token pair' })
   login(@Body() dto: LoginDto, @Req() req: Request) {
@@ -34,7 +34,7 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 requests per minute
+  @Throttle({ default: { limit: 200, ttl: 60000 } }) // 200 requests per minute
   @Post('refresh')
   @ApiOperation({ summary: 'Exchange a valid refresh token for a new token pair (rotates refresh token)' })
   refresh(@Body() dto: RefreshTokenDto) {

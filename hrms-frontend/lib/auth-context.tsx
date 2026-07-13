@@ -147,13 +147,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Only fetch feature flags if user has company.read (skip for employees → avoids 403)
       const canReadCompany = permissions.includes('company.read');
+
+      // Race API calls against a 10s timeout to prevent the entire auth flow
+      // from hanging forever on slow backend responses.
+      const TIMEOUT_MS = 10_000;
+      const timeout = (ms: number) => new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Auth request timed out')), ms)
+      );
+
       const featuresPromise = canReadCompany
-        ? unwrap<FeatureFlag[]>(api.get('/billing/features')).catch(() => [] as FeatureFlag[])
+        ? Promise.race([
+            unwrap<FeatureFlag[]>(api.get('/billing/features')).catch(() => [] as FeatureFlag[]),
+            timeout(TIMEOUT_MS).catch(() => [] as FeatureFlag[]),
+          ])
         : Promise.resolve([] as FeatureFlag[]);
 
-      // Fetch profile in parallel with features — JWT already has userId, email, companyId, etc.
+      // Fetch profile in parallel with features — with timeout
       const [profile, features] = await Promise.all([
-        unwrap<UserProfile>(api.get('/me/profile')).catch(() => null),
+        Promise.race([
+          unwrap<UserProfile>(api.get('/me/profile')).catch(() => null),
+          timeout(TIMEOUT_MS).catch(() => null),
+        ]),
         featuresPromise,
       ]);
 

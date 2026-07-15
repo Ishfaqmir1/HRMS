@@ -41,6 +41,8 @@ import { UploadModule } from './upload/upload.module';
 import { AttendancePolicyModule } from './attendance-policy/attendance-policy.module';
 import { StatutoryComplianceModule } from './statutory-compliance/statutory-compliance.module';
 import { DesignationsModule } from './designations/designations.module';
+import { AdminModule } from './admin/admin.module';
+import { SetupWizardModule } from './setup-wizard/setup-wizard.module';
 
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
@@ -96,7 +98,9 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     AttendanceRegularizationModule,
     StatutoryComplianceModule,
     DesignationsModule,
+    AdminModule,
     UploadModule,
+    SetupWizardModule,
   ],
   providers: [
     // ──────────────────────────────────────────────────────────────────

@@ -13,15 +13,17 @@ interface TopbarProps {
 }
 
 export function Topbar({ onMenuClick }: TopbarProps) {
-  const { profile } = useAuth();
+  const { profile, permissions } = useAuth();
   const { signOut } = useAuthActions();
   const [branding, setBranding] = useState<{ logoUrl?: string | null; companyName?: string | null } | null>(null);
 
   useEffect(() => {
+    // Only fetch branding if user has company.read — avoids 403 noise in network
+    if (!permissions.includes('company.read')) return;
     unwrap<{ logoUrl?: string | null; companyName?: string | null }>(api.get('/billing/branding'))
       .then(data => setBranding(data))
-      .catch(() => {}); // Silently fail — no company branding is fine
-  }, []);
+      .catch(() => {});
+  }, [permissions]);
 
   async function handleLogout() {
     const refreshToken = getRefreshToken();

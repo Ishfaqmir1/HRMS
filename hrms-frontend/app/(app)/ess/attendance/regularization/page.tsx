@@ -367,8 +367,11 @@ export default function AttendanceRegularizationPage() {
     setFormError('');
   };
 
-  // Click a single day → open regularization drawer
+  // Click a single day → open regularization drawer (past dates only)
   const handleDayClick = (day: number) => {
+    if (!isPastDay(day)) {
+      return; // Don't allow regularization for today or future dates
+    }
     if (bulkMode) {
       toggleBulkSelection(day);
       return;
@@ -378,8 +381,9 @@ export default function AttendanceRegularizationPage() {
     setDrawerOpen(true);
   };
 
-  // Toggle bulk selection
+  // Toggle bulk selection (past dates only)
   const toggleBulkSelection = (day: number) => {
+    if (!isPastDay(day)) return;
     setBulkSelection(prev => {
       const next = new Set(prev);
       if (next.has(day)) next.delete(day);

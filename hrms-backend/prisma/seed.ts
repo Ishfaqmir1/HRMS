@@ -283,10 +283,236 @@ async function main() {
   for (const plan of billingPlans) {
     await prisma.billingPlan.upsert({
       where: { slug: plan.slug },
-      update: plan,
-      create: plan,
+      update: {
+        ...plan,
+        yearlyPrice: plan.minMonthlyFee > 0 ? plan.minMonthlyFee * 12 * (1 - (plan.annualDiscountPercent || 0) / 100) : 0,
+        apiLimit: plan.slug === 'starter' ? 1000 : plan.slug === 'growth' ? 10000 : plan.slug === 'business' ? 50000 : plan.slug === 'enterprise' ? 100000 : 0,
+        prioritySupport: plan.slug === 'starter' ? 'email' : plan.slug === 'growth' ? 'priority' : plan.slug === 'business' ? 'dedicated' : plan.slug === 'enterprise' ? '24/7' : 'none',
+        visibility: 'PUBLIC',
+      },
+      create: {
+        ...plan,
+        yearlyPrice: plan.minMonthlyFee > 0 ? plan.minMonthlyFee * 12 * (1 - (plan.annualDiscountPercent || 0) / 100) : 0,
+        apiLimit: plan.slug === 'starter' ? 1000 : plan.slug === 'growth' ? 10000 : plan.slug === 'business' ? 50000 : plan.slug === 'enterprise' ? 100000 : 0,
+        prioritySupport: plan.slug === 'starter' ? 'email' : plan.slug === 'growth' ? 'priority' : plan.slug === 'business' ? 'dedicated' : plan.slug === 'enterprise' ? '24/7' : 'none',
+        visibility: 'PUBLIC',
+      },
     });
   }
+
+  console.log('Seeding plan features catalog...');
+  const PLAN_FEATURES = [
+    // Core
+    { code: 'employee_management', name: 'Employee Management', category: 'core', sortOrder: 1 },
+    { code: 'department_branch', name: 'Departments & Branches', category: 'core', sortOrder: 2 },
+    { code: 'designations', name: 'Designations', category: 'core', sortOrder: 3 },
+    { code: 'roles_permissions', name: 'Custom Roles & Permissions', category: 'core', sortOrder: 4, description: 'Define custom roles with granular permissions' },
+    { code: 'approval_workflow', name: 'Approval Workflows', category: 'core', sortOrder: 5 },
+
+    // Attendance
+    { code: 'attendance', name: 'Attendance Tracking', category: 'attendance', sortOrder: 10 },
+    { code: 'shift_management', name: 'Shift Management', category: 'attendance', sortOrder: 11 },
+    { code: 'roster', name: 'Roster / Scheduling', category: 'attendance', sortOrder: 12 },
+    { code: 'gps_attendance', name: 'GPS Attendance', category: 'attendance', sortOrder: 13 },
+    { code: 'qr_attendance', name: 'QR Attendance', category: 'attendance', sortOrder: 14 },
+    { code: 'face_recognition', name: 'Face Recognition', category: 'attendance', sortOrder: 15 },
+    { code: 'biometric', name: 'Biometric Integration', category: 'attendance', sortOrder: 16 },
+    { code: 'geo_fence', name: 'Geo Fencing', category: 'attendance', sortOrder: 17 },
+    { code: 'overtime', name: 'Overtime Tracking', category: 'attendance', sortOrder: 18 },
+    { code: 'attendance_reports', name: 'Attendance Reports', category: 'attendance', sortOrder: 19 },
+
+    // Leave
+    { code: 'leave_management', name: 'Leave Management', category: 'leave', sortOrder: 20 },
+    { code: 'leave_types', name: 'Custom Leave Types', category: 'leave', sortOrder: 21 },
+    { code: 'leave_balance', name: 'Leave Balance Tracking', category: 'leave', sortOrder: 22 },
+
+    // Payroll
+    { code: 'payroll', name: 'Payroll Processing', category: 'payroll', sortOrder: 30 },
+    { code: 'payslips', name: 'Payslips', category: 'payroll', sortOrder: 31 },
+    { code: 'salary_structures', name: 'Salary Structures', category: 'payroll', sortOrder: 32 },
+    { code: 'tax_calculations', name: 'Tax Calculations', category: 'payroll', sortOrder: 33 },
+    { code: 'loans', name: 'Employee Loans', category: 'payroll', sortOrder: 34 },
+    { code: 'expenses', name: 'Expense Management', category: 'payroll', sortOrder: 35 },
+    { code: 'reimbursements', name: 'Reimbursements', category: 'payroll', sortOrder: 36 },
+    { code: 'statutory_compliance', name: 'Statutory Compliance (PF/ESI/PT)', category: 'payroll', sortOrder: 37 },
+
+    // HR
+    { code: 'recruitment', name: 'Recruitment / ATS', category: 'hr', sortOrder: 40 },
+    { code: 'onboarding', name: 'Employee Onboarding', category: 'hr', sortOrder: 41 },
+    { code: 'documents', name: 'Document Management', category: 'hr', sortOrder: 42 },
+    { code: 'document_templates', name: 'Document Templates', category: 'hr', sortOrder: 43 },
+    { code: 'performance', name: 'Performance Reviews', category: 'hr', sortOrder: 44 },
+    { code: 'goals', name: 'Goals & OKRs', category: 'hr', sortOrder: 45 },
+    { code: 'training', name: 'Training & LMS', category: 'hr', sortOrder: 46, description: 'Learning management system with training programs' },
+    { code: 'assets', name: 'Asset Management', category: 'hr', sortOrder: 47 },
+    { code: 'travel', name: 'Travel Management', category: 'hr', sortOrder: 48 },
+
+    // ESS
+    { code: 'ess', name: 'Employee Self-Service (ESS)', category: 'ess', sortOrder: 50 },
+    { code: 'mobile_app', name: 'Mobile App Access', category: 'ess', sortOrder: 51 },
+    { code: 'whatsapp', name: 'WhatsApp Integration', category: 'ess', sortOrder: 52 },
+
+    // Analytics & Reports
+    { code: 'basic_reports', name: 'Basic Reports', category: 'analytics', sortOrder: 60 },
+    { code: 'advanced_analytics', name: 'Advanced Analytics', category: 'analytics', sortOrder: 61 },
+    { code: 'custom_reports', name: 'Custom Reports', category: 'analytics', sortOrder: 62 },
+    { code: 'audit_logs', name: 'Audit Logs', category: 'analytics', sortOrder: 63 },
+    { code: 'notifications', name: 'Notifications & Alerts', category: 'analytics', sortOrder: 64 },
+
+    // Security
+    { code: 'sso', name: 'SSO (Microsoft/Google/SAML)', category: 'security', sortOrder: 70 },
+    { code: 'custom_branding', name: 'Custom Branding / White-label', category: 'security', sortOrder: 71 },
+    { code: 'multi_branch', name: 'Multi-Branch Support', category: 'security', sortOrder: 72 },
+    { code: 'multi_company', name: 'Multi-Company Support', category: 'security', sortOrder: 73 },
+    { code: 'multi_country', name: 'Multi-Country Support', category: 'security', sortOrder: 74 },
+
+    // Integrations & API
+    { code: 'api_access', name: 'API Access', category: 'integrations', sortOrder: 80 },
+    { code: 'webhooks', name: 'Webhooks', category: 'integrations', sortOrder: 81 },
+    { code: 'integrations', name: 'Third-party Integrations', category: 'integrations', sortOrder: 82 },
+    { code: 'ai_assistant', name: 'AI Assistant', category: 'integrations', sortOrder: 83 },
+  ];
+
+  const createdFeatures: Record<string, string> = {};
+  for (const f of PLAN_FEATURES) {
+    const feature = await prisma.planFeature.upsert({
+      where: { code: f.code },
+      update: f,
+      create: f,
+    });
+    createdFeatures[f.code] = feature.id;
+  }
+
+  console.log('Seeding plan-feature mappings...');
+  // Define which features each plan gets
+  type FeatureMap = Record<string, boolean>;
+  const starterFeatures: FeatureMap = {
+    employee_management: true,
+    department_branch: true,
+    designations: true,
+    attendance: true,
+    shift_management: true,
+    leave_management: true,
+    leave_types: true,
+    leave_balance: true,
+    ess: true,
+    mobile_app: true,
+    basic_reports: true,
+    notifications: true,
+    onboarding: true,
+    documents: true,
+    whatsapp: false,
+    qr_attendance: false,
+    gps_attendance: false,
+    face_recognition: false,
+    biometric: false,
+    geo_fence: false,
+    overtime: false,
+    performance: false,
+    goals: false,
+    training: false,
+    assets: false,
+    travel: false,
+    recruitment: false,
+    payroll: false,
+    payslips: false,
+    salary_structures: false,
+    tax_calculations: false,
+    loans: false,
+    expenses: false,
+    reimbursements: false,
+    statutory_compliance: false,
+    api_access: false,
+    webhooks: false,
+    integrations: false,
+    sso: false,
+    custom_branding: false,
+    multi_branch: false,
+    multi_company: false,
+    multi_country: false,
+    advanced_analytics: false,
+    custom_reports: false,
+    audit_logs: false,
+    document_templates: false,
+    roles_permissions: false,
+    approval_workflow: false,
+    roster: false,
+    ai_assistant: false,
+  };
+
+  const growthFeatures: FeatureMap = {
+    ...starterFeatures,
+    payroll: true,
+    payslips: true,
+    salary_structures: true,
+    tax_calculations: true,
+    loans: true,
+    expenses: true,
+    reimbursements: true,
+    assets: true,
+    shift_management: true,
+    overtime: true,
+    geo_fence: true,
+    gps_attendance: true,
+    qr_attendance: true,
+    approval_workflow: true,
+    api_access: true,
+    basic_reports: true,
+    audit_logs: true,
+    document_templates: true,
+    notifications: true,
+    statutory_compliance: true,
+    travel: true,
+    training: true,
+    onboarding: true,
+  };
+
+  const businessFeatures: FeatureMap = {
+    ...growthFeatures,
+    face_recognition: true,
+    custom_branding: true,
+    advanced_analytics: true,
+    custom_reports: true,
+    sso: true,
+    roles_permissions: true,
+    multi_branch: true,
+    webhooks: true,
+    integrations: true,
+    biometric: true,
+    roster: true,
+    performance: true,
+    goals: true,
+  };
+
+  const enterpriseFeatures: FeatureMap = {
+    ...businessFeatures,
+    multi_company: true,
+    multi_country: true,
+    ai_assistant: true,
+    whatsapp: true,
+    all_features: true,
+  };
+
+  // Feature toggles for each plan (everything else defaults to false)
+  // Helper to apply feature map to a plan
+  async function applyFeatureMappings(planSlug: string, featureMap: FeatureMap) {
+    const plan = await prisma.billingPlan.findUnique({ where: { slug: planSlug } });
+    if (!plan) return;
+    for (const [code, enabled] of Object.entries(featureMap)) {
+      const featureId = createdFeatures[code];
+      if (!featureId) continue;
+      await prisma.planFeatureMapping.upsert({
+        where: { planId_featureId: { planId: plan.id, featureId } },
+        update: { isEnabled: enabled },
+        create: { planId: plan.id, featureId, isEnabled: enabled },
+      });
+    }
+  }
+
+  await applyFeatureMappings('starter', starterFeatures);
+  await applyFeatureMappings('growth', growthFeatures);
+  await applyFeatureMappings('business', businessFeatures);
+  await applyFeatureMappings('enterprise', enterpriseFeatures);
 
   console.log('Seeding feature flags...');
   const featureFlags = [

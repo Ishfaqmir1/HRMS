@@ -1,9 +1,9 @@
-import { Body, Controller, Get, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { AuthService } from './auth.service';
-import { RegisterDto } from './dto/register.dto';
+import { RegisterDto, VerifyEmailDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { Public } from '../common/decorators/public.decorator';
@@ -39,6 +39,21 @@ export class AuthController {
   @ApiOperation({ summary: 'Exchange a valid refresh token for a new token pair (rotates refresh token)' })
   refresh(@Body() dto: RefreshTokenDto) {
     return this.authService.refresh(dto.refreshToken);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 50, ttl: 60000 } })
+  @Post('verify-email')
+  @ApiOperation({ summary: 'Verify email address with a verification token' })
+  verifyEmail(@Body() dto: VerifyEmailDto) {
+    return this.authService.verifyEmail(dto);
+  }
+
+  @ApiBearerAuth()
+  @Post('send-verification')
+  @ApiOperation({ summary: 'Send a new email verification link to the authenticated user' })
+  sendVerification(@CurrentUser('userId') userId: string) {
+    return this.authService.sendVerificationEmail(userId);
   }
 
   @ApiBearerAuth()

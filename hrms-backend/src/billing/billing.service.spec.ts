@@ -61,39 +61,49 @@ describe('BillingService', () => {
   // 1. findAllPlans (public endpoint)
   // ====================================================================
   describe('1. findAllPlans', () => {
+    function makePlan(id: string, name: string, sortOrder: number, isActive = true) {
+      return { id, name, sortOrder, isActive, featureMappings: [] };
+    }
+
     it('returns only active plans sorted by sortOrder', async () => {
       const plans = [
-        { id: 'plan-1', name: 'Starter', sortOrder: 0, isActive: true },
-        { id: 'plan-2', name: 'Growth', sortOrder: 1, isActive: true },
-        { id: 'plan-3', name: 'Enterprise', sortOrder: 2, isActive: true },
+        makePlan('plan-1', 'Starter', 0),
+        makePlan('plan-2', 'Growth', 1),
+        makePlan('plan-3', 'Enterprise', 2),
       ];
       prisma.billingPlan.findMany.mockResolvedValue(plans);
 
       const result = await service.findAllPlans();
 
-      expect(result).toEqual(plans);
-      expect(prisma.billingPlan.findMany).toHaveBeenCalledWith({
-        where: { isActive: true },
-        orderBy: { sortOrder: 'asc' },
-      });
+      expect(result).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'plan-1' }),
+          expect.objectContaining({ id: 'plan-2' }),
+          expect.objectContaining({ id: 'plan-3' }),
+        ]),
+      );
+      expect(prisma.billingPlan.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { isActive: true, visibility: 'PUBLIC' },
+          orderBy: { sortOrder: 'asc' },
+        }),
+      );
     });
 
     it('excludes inactive plans from results', async () => {
       const activePlans = [
-        { id: 'plan-1', name: 'Starter', sortOrder: 0, isActive: true },
-        { id: 'plan-3', name: 'Enterprise', sortOrder: 2, isActive: true },
+        makePlan('plan-1', 'Starter', 0),
+        makePlan('plan-3', 'Enterprise', 2),
       ];
       prisma.billingPlan.findMany.mockResolvedValue(activePlans);
 
       const result = await service.findAllPlans();
 
-      // Only active plans returned
       expect(result).toHaveLength(2);
       expect(result.every(p => p.isActive)).toBe(true);
-      // The Prisma query filters by isActive: true
       expect(prisma.billingPlan.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { isActive: true },
+          where: { isActive: true, visibility: 'PUBLIC' },
         }),
       );
     });
@@ -108,22 +118,26 @@ describe('BillingService', () => {
 
     it('returns plans sorted by sortOrder ascending', async () => {
       const unsorted = [
-        { id: 'plan-3', name: 'Enterprise', sortOrder: 2, isActive: true },
-        { id: 'plan-1', name: 'Starter', sortOrder: 0, isActive: true },
-        { id: 'plan-2', name: 'Growth', sortOrder: 1, isActive: true },
+        makePlan('plan-3', 'Enterprise', 2),
+        makePlan('plan-1', 'Starter', 0),
+        makePlan('plan-2', 'Growth', 1),
       ];
       prisma.billingPlan.findMany.mockResolvedValue(unsorted);
 
       const result = await service.findAllPlans();
 
-      // Service expects Prisma to sort; verify the query includes sortOrder
       expect(prisma.billingPlan.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           orderBy: { sortOrder: 'asc' },
         }),
       );
-      // The result order reflects what Prisma returns (mocked as unsorted above)
-      expect(result).toEqual(unsorted);
+      expect(result).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'plan-1' }),
+          expect.objectContaining({ id: 'plan-2' }),
+          expect.objectContaining({ id: 'plan-3' }),
+        ]),
+      );
     });
   });
 

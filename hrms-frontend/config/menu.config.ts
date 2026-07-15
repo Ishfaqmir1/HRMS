@@ -4,7 +4,7 @@ import {
   Smartphone, FileText, Handshake, GraduationCap, UserCheck,
   Banknote, Receipt, Home, UserCircle, FileWarning, Upload,
   FileSpreadsheet, ScrollText, Printer, Palette, Play, CreditCard,
-  type LucideIcon,
+  Settings, type LucideIcon,
 } from 'lucide-react';
 
 // ──────────────────────────────────────────────────────────────────
@@ -158,6 +158,11 @@ export const MENU_CONFIG: MenuSection[] = [
         icon: Home,
       },
       {
+        href: '/admin/audit-logs',
+        label: 'Audit Logs',
+        icon: FileText,
+      },
+      {
         href: '/billing',
         label: 'Billing',
         icon: DollarSign,
@@ -166,6 +171,11 @@ export const MENU_CONFIG: MenuSection[] = [
         href: '/admin/billing/plans',
         label: 'Plan Management',
         icon: CreditCard,
+      },
+      {
+        href: '/admin/settings',
+        label: 'Platform Settings',
+        icon: Settings,
       },
       {
         href: '/analytics',
@@ -507,4 +517,6 @@ export const ROUTE_GUARDS: RouteGuard[] = [
 
   // Admin billing — super admin only
   { path: '/admin/billing/plans', roles: ['super-admin'], exact: true },
+  { path: '/admin/audit-logs', roles: ['super-admin'], exact: true },
+  { path: '/admin/settings', roles: ['super-admin'], exact: true },
 ];

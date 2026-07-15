@@ -1702,6 +1702,27 @@ enum EnrollmentStatus {
   DROPPED
 }
 
+/// Platform-wide settings singleton (super admin)
+model PlatformSettings {
+  id                  String   @id @default(uuid())
+  platformName        String   @default("HRMS")
+  platformLogoUrl     String?
+  platformFaviconUrl  String?
+  platformPrimaryColor String  @default("#0B6E63")
+  platformSecondaryColor String @default("#10192B")
+  platformAccentColor String   @default("#4DB6A8")
+  maintenanceMode     Boolean  @default(false)
+  maintenanceMessage  String?
+  emailFooter         String?
+  defaultTimezone     String   @default("UTC")
+  defaultLocale       String   @default("en")
+  defaultCurrency     String   @default("USD")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@map("platform_settings")
+}
+
 enum BillingCycle {
   MONTHLY
   YEARLY

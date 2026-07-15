@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -32,7 +32,21 @@ const schema = z.object({
 });
 type FormValues = z.infer<typeof schema>;
 
-export default function RegisterPage() {
+export default function RegisterPageWrapper() {
+  return (
+    <Suspense fallback={
+      <div className="auth-page-bg flex min-h-screen items-center justify-center px-4 py-10">
+        <div className="flex items-center justify-center">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-accent" />
+        </div>
+      </div>
+    }>
+      <RegisterPage />
+    </Suspense>
+  );
+}
+
+function RegisterPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedPlanId = searchParams.get('plan');

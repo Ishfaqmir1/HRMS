@@ -111,20 +111,20 @@ export class AdminAuditService {
     });
 
     // Action type distribution
-    const actionCounts = await this.prisma.auditLog.groupBy({
+    const actionCounts = (await this.prisma.auditLog.groupBy({
       by: ['action'],
       _count: { _all: true },
-      orderBy: { _count: { _all: 'desc' } },
-      take: 20,
-    });
+    }))
+      .sort((a, b) => b._count._all - a._count._all)
+      .slice(0, 20);
 
     // Entity type distribution
-    const entityTypeCounts = await this.prisma.auditLog.groupBy({
+    const entityTypeCounts = (await this.prisma.auditLog.groupBy({
       by: ['entityType'],
       _count: { _all: true },
-      orderBy: { _count: { _all: 'desc' } },
-      take: 15,
-    });
+    }))
+      .sort((a, b) => b._count._all - a._count._all)
+      .slice(0, 15);
 
     // Daily activity for last 30 days
     const dailyActivity = await this.prisma.$queryRaw<Array<{ date: Date; count: bigint }>>`
@@ -163,11 +163,10 @@ export class AdminAuditService {
   }
 
   async getDistinctActions() {
-    const result = await this.prisma.auditLog.groupBy({
+    const result = (await this.prisma.auditLog.groupBy({
       by: ['action'],
       _count: { _all: true },
-      orderBy: { _count: { _all: 'desc' } },
-    });
+    })).sort((a, b) => b._count._all - a._count._all);
     return result.map((r) => ({
       action: r.action,
       count: r._count._all,

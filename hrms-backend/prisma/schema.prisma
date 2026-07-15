@@ -17,11 +17,11 @@ model Company {
   timezone                  String                     @default("UTC")
   locale                    String                     @default("en")
   currency                  String                     @default("USD")
-  status                    CompanyStatus              @default(ACTIVE)
+  status                    CompanyStatus              @default(PENDING_EMAIL_VERIFICATION)
   subscriptionPlan          SubscriptionPlan           @default(TRIAL)
   trialEndsAt               DateTime?
   billingEmail              String?
-  isActive                  Boolean                    @default(true)
+  isActive                  Boolean                    @default(false)
   createdAt                 DateTime                   @default(now())
   updatedAt                 DateTime                   @updatedAt
   deletedAt                 DateTime?
@@ -29,6 +29,28 @@ model Company {
   billingCycle              BillingCycle               @default(MONTHLY)
   stripeCustomerId          String?
   stripeSubscriptionId      String?
+  addressLine1              String?
+  addressLine2              String?
+  /// File URL for address proof document
+  addressProof              String?
+  autoPay                   Boolean                    @default(false)
+  city                      String?
+  country                   String?
+  domain                    String?
+  gstNumber                 String?
+  /// File URL for owner ID document
+  ownerIdDoc                String?
+  panNumber                 String?
+  phone                     String?
+  postalCode                String?
+  /// File URL for company registration certificate
+  registrationCert          String?
+  rejectionReason           String?
+  setupCompleted            Boolean                    @default(false)
+  setupSkippedAt            DateTime?
+  state                     String?
+  verifiedAt                DateTime?
+  verifiedById              String?
   assetAssignments          AssetAssignment[]
   assets                    Asset[]
   attendanceBreaks          AttendanceBreak[]
@@ -43,15 +65,15 @@ model Company {
   billingPlan               BillingPlan?               @relation(fields: [billingPlanId], references: [id])
   branding                  CompanyBranding?
   featureFlags              CompanyFeatureFlag[]
+  complianceConfig          ComplianceConfig?
   departments               Department[]
   designations              Designation[]
-  complianceConfig          ComplianceConfig?
-  documentTemplates        DocumentTemplate[]
-  generatedDocuments        GeneratedDocument[]
+  documentTemplates         DocumentTemplate[]
   employeeDocuments         EmployeeDocument[]
   employeeSalaries          EmployeeSalary[]
   employees                 Employee[]
   faceEnrollments           FaceEnrollment[]
+  generatedDocuments        GeneratedDocument[]
   holidays                  Holiday[]
   interviews                Interview[]
   invoices                  Invoice[]
@@ -61,8 +83,10 @@ model Company {
   leaveRequests             LeaveRequest[]
   leaveTypes                LeaveType[]
   loans                     Loan[]
+  paymentMethods            PaymentMethod[]
   payrollRuns               PayrollRun[]
   payslips                  Payslip[]
+  professionalTaxSlabs      ProfessionalTaxSlab[]
   qrCodeSessions            QRCodeSession[]
   reimbursementCategories   ReimbursementCategory[]
   reimbursements            Reimbursement[]
@@ -70,7 +94,6 @@ model Company {
   salaryStructures          SalaryStructure[]
   shifts                    Shift[]
   taxDeclarations           TaxDeclaration[]
-  professionalTaxSlabs      ProfessionalTaxSlab[]
   trainingEnrollments       TrainingEnrollment[]
   trainings                 Training[]
   trustedDevices            TrustedDevice[]
@@ -304,11 +327,11 @@ model Employee {
   team                      Team?                      @relation(fields: [teamId], references: [id])
   user                      User?                      @relation(fields: [userId], references: [id])
   faceEnrollments           FaceEnrollment[]
+  generatedDocuments        GeneratedDocument[]
   leaveBalances             LeaveBalance[]
   approvedLeaveRequests     LeaveRequest[]             @relation("ApproverLeaveRequests")
   leaveRequests             LeaveRequest[]             @relation("EmployeeLeaveRequests")
   loans                     Loan[]
-  generatedDocuments        GeneratedDocument[]
   payslips                  Payslip[]
   qrCodeSessions            QRCodeSession[]
   reimbursements            Reimbursement[]
@@ -544,83 +567,68 @@ model AttendanceSecurityLog {
 }
 
 model AttendancePolicy {
-  id                        String   @id @default(uuid())
-  companyId                 String   @unique
-  name                      String   @default("Default Policy")
-  timezone                  String   @default("UTC")
-
-  // Working days (0=Sun, 1=Mon, ..., 6=Sat)
-  workingDays               Int[]    @default([1,2,3,4,5])
-
-  // Working hours
-  defaultStartTime          String   @default("09:00")
-  defaultEndTime            String   @default("18:00")
-  dailyWorkingHours         Float    @default(9)
-  breakDurationMinutes      Int      @default(60)
-
-  // Grace & late rules
-  gracePeriodMinutes        Int      @default(15)
-  lateThresholdMinutes      Int      @default(30)
-  veryLateThresholdMinutes  Int      @default(60)
-  halfDayThresholdMinutes   Int      @default(240)
-  minimumWorkingMinutes     Int      @default(480)
-  maximumWorkingMinutes     Int      @default(720)
-
-  // Overtime
-  enableOvertime            Boolean  @default(true)
-  overtimeStartsAfterMinutes Int     @default(540)
-  maxOvertimeMinutes        Int      @default(240)
-
-  // Auto-detection flags
-  enableAutoLateDetection   Boolean  @default(true)
-  enableAutoHalfDay         Boolean  @default(true)
-  enableAutoAbsent          Boolean  @default(true)
-
-  // Auto checkout
-  enableAutoCheckout        Boolean  @default(true)
-  autoCheckoutTime          String   @default("23:59")
-
-  // Remote / flexible
-  enableRemoteWork          Boolean  @default(false)
-  enableFlexibleShift       Boolean  @default(false)
-  enableMultiplePunch       Boolean  @default(false)
-  crossMidnightShift        Boolean  @default(false)
-
-  createdAt                 DateTime @default(now())
-  updatedAt                 DateTime @updatedAt
-  company                   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id                         String   @id @default(uuid())
+  companyId                  String   @unique
+  name                       String   @default("Default Policy")
+  timezone                   String   @default("UTC")
+  workingDays                Int[]    @default([1, 2, 3, 4, 5])
+  defaultStartTime           String   @default("09:00")
+  defaultEndTime             String   @default("18:00")
+  dailyWorkingHours          Float    @default(9)
+  breakDurationMinutes       Int      @default(60)
+  gracePeriodMinutes         Int      @default(15)
+  lateThresholdMinutes       Int      @default(30)
+  veryLateThresholdMinutes   Int      @default(60)
+  halfDayThresholdMinutes    Int      @default(240)
+  minimumWorkingMinutes      Int      @default(480)
+  maximumWorkingMinutes      Int      @default(720)
+  enableOvertime             Boolean  @default(true)
+  overtimeStartsAfterMinutes Int      @default(540)
+  maxOvertimeMinutes         Int      @default(240)
+  enableAutoLateDetection    Boolean  @default(true)
+  enableAutoHalfDay          Boolean  @default(true)
+  enableAutoAbsent           Boolean  @default(true)
+  enableAutoCheckout         Boolean  @default(true)
+  autoCheckoutTime           String   @default("23:59")
+  enableRemoteWork           Boolean  @default(false)
+  enableFlexibleShift        Boolean  @default(false)
+  enableMultiplePunch        Boolean  @default(false)
+  crossMidnightShift         Boolean  @default(false)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+  company                    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@map("attendance_policies")
 }
 
 model AttendanceRecord {
-  id                String                     @id @default(uuid())
-  companyId         String
-  employeeId        String
-  date              DateTime
-  checkIn           DateTime?
-  checkOut          DateTime?
-  workedMinutes     Int?
-  breakMinutes      Int?                       @default(0)
-  breakStart        DateTime?
-  breakEnd          DateTime?
-  overtimeMinutes   Int?                       @default(0)
-  lateMinutes       Int?                       @default(0)
-  earlyExitMinutes  Int?                       @default(0)
-  status            AttendanceStatus           @default(PRESENT)
-  source            AttendanceSource           @default(WEB)
-  checkInLat        Float?
-  checkInLng        Float?
-  checkOutLat       Float?
-  checkOutLng       Float?
-  notes             String?
-  createdAt         DateTime                   @default(now())
-  updatedAt         DateTime                   @updatedAt
-  photos            AttendancePhoto[]
-  breaks            AttendanceBreak[]
-  company           Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employee          Employee                   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  regularizations   AttendanceRegularization[]
+  id               String                     @id @default(uuid())
+  companyId        String
+  employeeId       String
+  date             DateTime
+  checkIn          DateTime?
+  checkOut         DateTime?
+  workedMinutes    Int?
+  status           AttendanceStatus           @default(PRESENT)
+  source           AttendanceSource           @default(WEB)
+  checkInLat       Float?
+  checkInLng       Float?
+  checkOutLat      Float?
+  checkOutLng      Float?
+  notes            String?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+  breakEnd         DateTime?
+  breakMinutes     Int?                       @default(0)
+  breakStart       DateTime?
+  earlyExitMinutes Int?                       @default(0)
+  lateMinutes      Int?                       @default(0)
+  overtimeMinutes  Int?                       @default(0)
+  breaks           AttendanceBreak[]
+  photos           AttendancePhoto[]
+  company          Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee         Employee                   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  regularizations  AttendanceRegularization[]
 
   @@unique([employeeId, date])
   @@index([companyId])
@@ -632,26 +640,24 @@ model AttendanceRecord {
 }
 
 model AttendanceBreak {
-  id          String           @id @default(uuid())
-  companyId   String
-  employeeId  String
-  recordId    String
-  type        String           @default("BREAK")
-  startTime   DateTime
-  endTime     DateTime?
-  durationMinutes Int?         @default(0)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  company     Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employee    Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  record      AttendanceRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  id              String           @id @default(uuid())
+  companyId       String
+  employeeId      String
+  recordId        String
+  type            String           @default("BREAK")
+  startTime       DateTime
+  endTime         DateTime?
+  durationMinutes Int?             @default(0)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee        Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  record          AttendanceRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
 
   @@index([recordId])
   @@index([employeeId])
   @@map("attendance_breaks")
 }
-
-
 
 model AttendanceRegularization {
   id                String               @id @default(uuid())
@@ -809,8 +815,6 @@ model PayrollRun {
   companyId       String
   month           Int
   year            Int
-  version         Int              @default(1)
-  previousRunId   String?
   status          PayrollRunStatus @default(DRAFT)
   processedById   String?
   processedAt     DateTime?
@@ -818,14 +822,16 @@ model PayrollRun {
   totalDeductions Float            @default(0)
   totalNet        Float            @default(0)
   employeeCount   Int              @default(0)
-  recalcReason    String?
   notes           String?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
+  previousRunId   String?
+  recalcReason    String?
+  version         Int              @default(1)
   company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  payslips        Payslip[]
   previousRun     PayrollRun?      @relation("PayrollVersion", fields: [previousRunId], references: [id])
   childRuns       PayrollRun[]     @relation("PayrollVersion")
+  payslips        Payslip[]
 
   @@unique([companyId, month, year, version])
   @@index([companyId])
@@ -839,7 +845,6 @@ model Payslip {
   companyId          String
   employeeId         String
   runId              String
-  previousPayslipId  String?
   basic              Float         @default(0)
   housingAllowance   Float         @default(0)
   transportAllowance Float         @default(0)
@@ -855,18 +860,19 @@ model Payslip {
   otherDeductions    Float         @default(0)
   totalDeductions    Float         @default(0)
   netPay             Float         @default(0)
-  adjustments        Json?
   status             PayslipStatus @default(DRAFT)
   paidAt             DateTime?
   paidById           String?
   notes              String?
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
+  adjustments        Json?
+  previousPayslipId  String?
   company            Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   employee           Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  run                PayrollRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
   previousPayslip    Payslip?      @relation("PayslipVersion", fields: [previousPayslipId], references: [id])
   revisedPayslips    Payslip[]     @relation("PayslipVersion")
+  run                PayrollRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@unique([employeeId, runId])
   @@index([companyId])
@@ -1063,20 +1069,23 @@ model EmployeeDocument {
 
 /// Pre-built document letter templates for HR document generation
 model DocumentTemplate {
-  id          String                  @id @default(uuid())
+  id          String                   @id @default(uuid())
   companyId   String?
   name        String
   slug        String
   description String?
   category    DocumentTemplateCategory @default(OFFER_LETTER)
-  content     String                  /// HTML/Handlebars template content
-  docxFileUrl String?                 /// Optional .docx template file path
-  variables   Json?                   /// Pre-defined variable list for UI hinting
-  isDefault   Boolean                 @default(false)
-  isActive    Boolean                 @default(true)
-  createdAt   DateTime                @default(now())
-  updatedAt   DateTime                @updatedAt
-  company     Company?                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// HTML/Handlebars template content
+  content     String
+  /// Optional .docx template file path
+  docxFileUrl String?
+  /// Pre-defined variable list for UI hinting
+  variables   Json?
+  isDefault   Boolean                  @default(false)
+  isActive    Boolean                  @default(true)
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+  company     Company?                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
   documents   GeneratedDocument[]
 
   @@unique([companyId, slug])
@@ -1087,23 +1096,27 @@ model DocumentTemplate {
 
 /// Generated/output documents (one per employee per generation)
 model GeneratedDocument {
-  id             String   @id @default(uuid())
-  companyId      String
-  employeeId     String
-  templateId     String
-  documentType   DocumentTemplateCategory
-  title          String
-  fileUrl        String   /// Path/URL to the generated PDF/docx file
-  fileType       String   @default("pdf")  /// pdf, docx, html
-  fileSize       Int?
-  variables      Json?    /// Snapshot of the variable values used at generation time
-  metadata       Json?    /// Additional context (reason, notes, etc.)
-  generatedById  String?
-  generatedAt    DateTime @default(now())
-  createdAt      DateTime @default(now())
-  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  template       DocumentTemplate @relation(fields: [templateId], references: [id])
+  id            String                   @id @default(uuid())
+  companyId     String
+  employeeId    String
+  templateId    String
+  documentType  DocumentTemplateCategory
+  title         String
+  /// Path/URL to the generated PDF/docx file
+  fileUrl       String
+  /// pdf, docx, html
+  fileType      String                   @default("pdf")
+  fileSize      Int?
+  /// Snapshot of the variable values used at generation time
+  variables     Json?
+  /// Additional context (reason, notes, etc.)
+  metadata      Json?
+  generatedById String?
+  generatedAt   DateTime                 @default(now())
+  createdAt     DateTime                 @default(now())
+  company       Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee      Employee                 @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  template      DocumentTemplate         @relation(fields: [templateId], references: [id])
 
   @@index([companyId])
   @@index([employeeId])
@@ -1227,27 +1240,71 @@ model TrainingEnrollment {
 
 /// Pre-defined billing plans with per-employee pricing
 model BillingPlan {
-  id                    String    @id @default(uuid())
+  id                    String               @id @default(uuid())
   name                  String
-  slug                  String    @unique
+  slug                  String               @unique
   description           String?
-  currency              String    @default("INR")
-  maxEmployees          Int       @default(25)
-  maxStorageGB          Int       @default(5)
+  currency              String               @default("INR")
+  maxEmployees          Int                  @default(25)
+  maxStorageGB          Int                  @default(5)
   features              Json?
-  isActive              Boolean   @default(true)
-  sortOrder             Int       @default(0)
+  isActive              Boolean              @default(true)
+  sortOrder             Int                  @default(0)
   stripePriceIdMonthly  String?
   stripePriceIdYearly   String?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  annualDiscountPercent Int       @default(0)
-  includedEmployees     Int       @default(25)
-  minMonthlyFee         Float     @default(0)
-  pricePerEmployee      Float     @default(0)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  annualDiscountPercent Int                  @default(0)
+  includedEmployees     Int                  @default(25)
+  minMonthlyFee         Float                @default(0)
+  pricePerEmployee      Float                @default(0)
+  apiLimit              Int                  @default(0)
+  /// none, email, priority, dedicated, 24/7
+  prioritySupport       String               @default("none")
+  /// PUBLIC, PRIVATE
+  visibility            String               @default("PUBLIC")
+  yearlyPrice           Float                @default(0)
   companies             Company[]
+  featureMappings       PlanFeatureMapping[]
 
   @@map("billing_plans")
+}
+
+/// Feature catalog — each row is a feature that can be assigned to plans
+model PlanFeature {
+  id           String               @id @default(uuid())
+  code         String               @unique
+  name         String
+  description  String?
+  /// core, attendance, payroll, recruitment, security, integrations, advanced
+  category     String               @default("core")
+  icon         String?
+  isActive     Boolean              @default(true)
+  sortOrder    Int                  @default(0)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  planMappings PlanFeatureMapping[]
+
+  @@map("plan_features")
+}
+
+/// Feature-to-plan mapping: which features each plan has
+model PlanFeatureMapping {
+  id        String      @id @default(uuid())
+  planId    String
+  featureId String
+  isEnabled Boolean     @default(true)
+  /// Optional per-plan feature configuration
+  config    Json?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  feature   PlanFeature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  plan      BillingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, featureId])
+  @@index([planId])
+  @@index([featureId])
+  @@map("plan_feature_mappings")
 }
 
 /// Generated invoices for company billing
@@ -1321,29 +1378,63 @@ model CompanyFeatureFlag {
   @@map("company_feature_flags")
 }
 
+/// Stored payment methods (credit/debit cards) per company
+model PaymentMethod {
+  id                    String   @id @default(uuid())
+  companyId             String
+  /// Stripe PaymentMethod ID (pm_xxxx) if synced
+  stripePaymentMethodId String?
+  /// Visa, Mastercard, Amex, etc.
+  brand                 String   @default("Visa")
+  /// Last 4 digits of the card
+  last4                 String
+  expMonth              Int
+  expYear               Int
+  cardholderName        String?
+  billingAddress1       String?
+  billingAddress2       String?
+  billingCity           String?
+  billingState          String?
+  billingPostalCode     String?
+  billingCountry        String?
+  isDefault             Boolean  @default(false)
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  company               Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, stripePaymentMethodId])
+  @@index([companyId])
+  @@index([companyId, isDefault])
+  @@map("payment_methods")
+}
+
 /// Custom branding settings per company
 model CompanyBranding {
-  id                  String   @id @default(uuid())
-  companyId           String   @unique
-  primaryColor        String   @default("#0B6E63")
-  secondaryColor      String   @default("#10192B")
-  accentColor         String   @default("#4DB6A8")
-  logoUrl             String?
-  faviconUrl          String?
-  companyName         String?
-  customDomain        String?
-  emailFooter         String?
-  signatureImageUrl   String?  /// Uploaded signature image for documents & payslips
-  signatureEnabled    Boolean  @default(false)
-  signatureTitle      String?  /// e.g. "Authorized Signatory" or "HR Manager"
-  companyAddress      String?  /// Full address shown on documents
-  companyCity         String?
-  companyState        String?
-  companyPostalCode   String?
-  enabled             Boolean  @default(false)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id                String   @id @default(uuid())
+  companyId         String   @unique
+  primaryColor      String   @default("#0B6E63")
+  secondaryColor    String   @default("#10192B")
+  accentColor       String   @default("#4DB6A8")
+  logoUrl           String?
+  faviconUrl        String?
+  companyName       String?
+  customDomain      String?
+  emailFooter       String?
+  enabled           Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  /// Full address shown on documents
+  companyAddress    String?
+  companyCity       String?
+  companyPostalCode String?
+  companyState      String?
+  signatureEnabled  Boolean  @default(false)
+  /// Uploaded signature image for documents & payslips
+  signatureImageUrl String?
+  /// e.g. "Authorized Signatory" or "HR Manager"
+  signatureTitle    String?
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@map("company_branding")
 }
@@ -1373,17 +1464,17 @@ model ComplianceConfig {
 
 /// State-wise Professional Tax slabs for Indian statutory compliance
 model ProfessionalTaxSlab {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   companyId     String
   state         String
-  minSalary     Float    @default(0)
+  minSalary     Float     @default(0)
   maxSalary     Float?
   taxAmount     Float
-  effectiveFrom DateTime @default(now())
+  effectiveFrom DateTime  @default(now())
   effectiveTo   DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([companyId, state])
   @@map("professional_tax_slabs")
@@ -1401,6 +1492,9 @@ enum CompanyStatus {
   SUSPENDED
   TRIAL_EXPIRED
   CANCELLED
+  PENDING_EMAIL_VERIFICATION
+  PENDING_APPROVAL
+  REJECTED
 }
 
 enum UserStatus {
@@ -1484,11 +1578,11 @@ enum Gender {
 
 enum PayrollRunStatus {
   DRAFT
-  PENDING_APPROVAL
-  APPROVED
   PROCESSING
   COMPLETED
   CANCELLED
+  PENDING_APPROVAL
+  APPROVED
 }
 
 enum PayslipStatus {

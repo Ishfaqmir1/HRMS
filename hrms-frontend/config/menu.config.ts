@@ -3,7 +3,7 @@ import {
   MapPin, Shield, Building2, Building, DollarSign, Briefcase, BarChart3,
   Smartphone, FileText, Handshake, GraduationCap, UserCheck,
   Banknote, Receipt, Home, UserCircle, FileWarning, Upload,
-  FileSpreadsheet, ScrollText, Printer, Palette, Play,
+  FileSpreadsheet, ScrollText, Printer, Palette, Play, CreditCard,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -137,6 +137,40 @@ export const MENU_CONFIG: MenuSection[] = [
         label: 'My Devices',
         icon: Smartphone,
         permissions: ['attendance.read'],
+      },
+    ],
+  },
+
+  // ── Platform (Super Admin) ─────────────────────────────────
+  {
+    title: 'Platform',
+    superAdminOnly: true,
+    items: [
+      {
+        href: '/admin/dashboard',
+        label: 'Platform Dashboard',
+        icon: LayoutDashboard,
+        showOnMobile: true,
+      },
+      {
+        href: '/companies',
+        label: 'All Companies',
+        icon: Home,
+      },
+      {
+        href: '/billing',
+        label: 'Billing',
+        icon: DollarSign,
+      },
+      {
+        href: '/admin/billing/plans',
+        label: 'Plan Management',
+        icon: CreditCard,
+      },
+      {
+        href: '/analytics',
+        label: 'Analytics',
+        icon: BarChart3,
       },
     ],
   },
@@ -321,13 +355,6 @@ export const MENU_CONFIG: MenuSection[] = [
     title: 'Administration',
     items: [
       {
-        href: '/companies',
-        label: 'Companies',
-        icon: Home,
-        roles: ['super-admin'],
-        superAdminOnly: true,
-      },
-      {
         href: '/billing',
         label: 'Billing',
         icon: DollarSign,
@@ -437,7 +464,9 @@ export const ROUTE_GUARDS: RouteGuard[] = [
   { path: '/register', permissions: [], redirect: '/dashboard' },
 
   // Super Admin only
+  { path: '/admin/dashboard', roles: ['super-admin'], exact: true },
   { path: '/companies', roles: ['super-admin'], exact: true },
+  { path: '/companies/', roles: ['super-admin'] },
 
   // Management routes
   { path: '/dashboard', permissions: ['employee.read'] },
@@ -472,4 +501,10 @@ export const ROUTE_GUARDS: RouteGuard[] = [
   { path: '/holidays', permissions: ['holiday.read'], roles: ['hr-manager', 'company-owner'] },
   { path: '/branches', permissions: ['branch.read'] },
   { path: '/roles', roles: ['super-admin', 'company-owner', 'hr-manager'] },
+
+  // Setup wizard — accessible to any company owner after approval
+  { path: '/setup-wizard', permissions: ['employee.read'], exact: true },
+
+  // Admin billing — super admin only
+  { path: '/admin/billing/plans', roles: ['super-admin'], exact: true },
 ];

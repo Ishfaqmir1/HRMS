@@ -116,6 +116,33 @@ export interface Shift {
 // Admin — Company
 // ============================================================
 
+export interface CompanyOwner {
+  id: string;
+  email: string;
+  status: string;
+  lastLoginAt: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  phone: string | null;
+}
+
+export interface BillingPlanSummary {
+  id: string;
+  name: string;
+  slug: string;
+  maxEmployees: number;
+  maxStorageGB: number;
+}
+
+export type CompanyStatus =
+  | 'PENDING_EMAIL_VERIFICATION'
+  | 'PENDING_APPROVAL'
+  | 'ACTIVE'
+  | 'SUSPENDED'
+  | 'TRIAL_EXPIRED'
+  | 'CANCELLED'
+  | 'REJECTED';
+
 export interface Company {
   id: string;
   name: string;
@@ -126,10 +153,109 @@ export interface Company {
   timezone: string;
   locale: string;
   currency: string;
-  status: 'ACTIVE' | 'SUSPENDED' | 'TRIAL_EXPIRED' | 'CANCELLED';
+  country?: string | null;
+  gstNumber?: string | null;
+  panNumber?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  domain?: string | null;
+  phone?: string | null;
+  status: CompanyStatus;
+  subscriptionPlan: string;
   isActive: boolean;
+  trialEndsAt: string | null;
+  billingEmail: string | null;
+  billingCycle: string;
+  verifiedAt: string | null;
+  verifiedById: string | null;
+  rejectionReason: string | null;
   createdAt: string;
+  updatedAt: string;
+  owner: CompanyOwner | null;
+  billingPlan: BillingPlanSummary | null;
+  employeeCount: number;
+  userCount: number;
   _count?: { employees: number; users: number };
+}
+
+export interface CompanyDetail extends Company {
+  branding: any | null;
+  registrationCert?: string | null;
+  addressProof?: string | null;
+  ownerIdDoc?: string | null;
+  _count: {
+    employees: number;
+    users: number;
+    departments: number;
+    branches: number;
+    assets: number;
+    leaveRequests: number;
+    attendanceRecords: number;
+    payrollRuns: number;
+    trainings: number;
+  };
+  users: Array<{
+    id: string;
+    email: string;
+    status: string;
+    lastLoginAt: string | null;
+    isEmailVerified: boolean;
+    employee: {
+      firstName: string | null;
+      lastName: string | null;
+      phone: string | null;
+      employeeCode: string | null;
+    } | null;
+  }>;
+}
+
+export interface CompanyUser {
+  id: string;
+  email: string;
+  status: string;
+  lastLoginAt: string | null;
+  isEmailVerified: boolean;
+  createdAt: string;
+  employee: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    employeeCode: string;
+    phone: string | null;
+  } | null;
+  userRoles: Array<{
+    role: {
+      id: string;
+      name: string;
+      slug: string;
+      isSystem: boolean;
+    };
+  }>;
+}
+
+export interface CompanyAuditLog {
+  id: string;
+  action: string;
+  entityType: string | null;
+  entityId: string | null;
+  metadata: any;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  user: {
+    id: string;
+    email: string;
+    employee: { firstName: string | null; lastName: string | null } | null;
+  } | null;
+}
+
+export interface ImpersonateResult {
+  accessToken: string;
+  user: { id: string; email: string; roles: string[] };
+  company: { id: string; name: string; slug: string };
 }
 
 // ============================================================

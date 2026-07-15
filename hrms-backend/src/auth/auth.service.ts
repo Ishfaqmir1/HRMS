@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   HttpException,
   HttpStatus,
@@ -10,10 +11,11 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginSecurityService } from '../common/services/login-security.service';
 import { AuditService } from '../common/services/audit.service';
-import { RegisterDto } from './dto/register.dto';
+import { RegisterDto, VerifyEmailDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 
 export interface TokenPair {
@@ -36,15 +38,29 @@ export class AuthService {
 
   /**
    * Registers a brand-new tenant (company) along with its first user, who is
-   * automatically assigned the COMPANY_OWNER role. This is the SaaS
-   * self-signup flow.
+   * automatically assigned the COMPANY_OWNER role.
+   * Company is created in PENDING_EMAIL_VERIFICATION status — email verification
+   * is required before super admin can approve the company.
    */
   async register(dto: RegisterDto) {
+    const normalizedEmail = dto.email.toLowerCase();
+
     const existingCompany = await this.prisma.company.findUnique({
       where: { slug: dto.companySlug },
     });
     if (existingCompany) {
       throw new ConflictException('This company slug is already taken.');
+    }
+
+    // Global email uniqueness check — the same email cannot register
+    // across different companies (prevents duplicate accounts).
+    const existingUser = await this.prisma.user.findFirst({
+      where: { email: normalizedEmail, deletedAt: null },
+    });
+    if (existingUser) {
+      throw new ConflictException(
+        'This email is already registered with another workspace. Please sign in instead.',
+      );
     }
 
     const ownerRole = await this.prisma.role.findFirst({
@@ -57,59 +73,219 @@ export class AuthService {
     const saltRounds = this.configService.get<number>('bcryptSaltRounds')!;
     const passwordHash = await bcrypt.hash(dto.password, saltRounds);
 
-    const result = await this.prisma.$transaction(async (tx) => {
-      const company = await tx.company.create({
-        data: {
-          name: dto.companyName,
-          slug: dto.companySlug,
-        },
+    // If a billingPlanId was provided during signup, validate it exists
+    let billingPlanId: string | null = null;
+    if (dto.billingPlanId) {
+      const plan = await this.prisma.billingPlan.findUnique({
+        where: { id: dto.billingPlanId, isActive: true },
       });
+      if (!plan) {
+        throw new BadRequestException('Selected billing plan not found or is inactive.');
+      }
+      billingPlanId = plan.id;
+    }
 
-      const user = await tx.user.create({
-        data: {
-          companyId: company.id,
-          email: dto.email.toLowerCase(),
-          passwordHash,
-          status: 'ACTIVE',
-          isEmailVerified: false,
-        },
+    // The transaction is wrapped in a try-catch for Prisma P2002 (unique constraint
+    // violation) as a safety net against race conditions between the pre-transaction
+    // checks above and the actual inserts below.
+    let result: { company: any; user: any; employee: any };
+    try {
+      result = await this.prisma.$transaction(async (tx) => {
+        const company = await tx.company.create({
+          data: {
+            name: dto.companyName,
+            slug: dto.companySlug,
+            industry: dto.industry ?? null,
+            size: dto.size ?? null,
+            country: dto.country ?? null,
+            timezone: dto.timezone ?? 'UTC',
+            currency: dto.currency ?? 'USD',
+            gstNumber: dto.gstNumber ?? null,
+            panNumber: dto.panNumber ?? null,
+            phone: dto.phone ?? null,
+            domain: dto.domain ?? null,
+            billingPlanId,
+            status: 'PENDING_EMAIL_VERIFICATION',
+            isActive: false,
+          },
+        });
+
+        const user = await tx.user.create({
+          data: {
+            companyId: company.id,
+            email: normalizedEmail,
+            passwordHash,
+            status: 'ACTIVE',
+            isEmailVerified: false,
+          },
+        });
+
+        await tx.userRole.create({
+          data: { userId: user.id, roleId: ownerRole.id },
+        });
+
+        const employee = await tx.employee.create({
+          data: {
+            companyId: company.id,
+            userId: user.id,
+            employeeCode: 'EMP-0001',
+            firstName: dto.firstName,
+            lastName: dto.lastName,
+            workEmail: dto.email.toLowerCase(),
+            phone: dto.phone ?? null,
+            dateOfJoining: new Date(),
+          },
+        });
+
+        // Audit: company registration
+        await tx.auditLog.create({
+          data: {
+            companyId: company.id,
+            userId: user.id,
+            action: 'COMPANY_REGISTERED',
+            entityType: 'Company',
+            entityId: company.id,
+            metadata: { status: 'PENDING_EMAIL_VERIFICATION' },
+          },
+        });
+
+        return { company, user, employee };
       });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+        if (err.code === 'P2002') {
+          // Unique constraint violation — map slug vs email to friendly messages
+          const target = (err.meta?.target as string[]) ?? [];
+          const targetStr = target.join(',');
 
-      await tx.userRole.create({
-        data: { userId: user.id, roleId: ownerRole.id },
-      });
+          if (targetStr.includes('slug')) {
+            throw new ConflictException(
+              'This company slug is already taken. Please choose another one.',
+            );
+          }
 
-      const employee = await tx.employee.create({
-        data: {
-          companyId: company.id,
-          userId: user.id,
-          employeeCode: 'EMP-0001',
-          firstName: dto.firstName,
-          lastName: dto.lastName,
-          workEmail: dto.email.toLowerCase(),
-          dateOfJoining: new Date(),
-        },
-      });
+          if (targetStr.includes('email')) {
+            throw new ConflictException(
+              'This email is already registered with another workspace. Please sign in instead.',
+            );
+          }
 
-      // Audit: company registration
-      await tx.auditLog.create({
-        data: {
-          companyId: company.id,
-          userId: user.id,
-          action: 'COMPANY_REGISTERED',
-          entityType: 'Company',
-          entityId: company.id,
-        },
-      });
+          throw new ConflictException(
+            'A conflict occurred during registration. Please try again with different details.',
+          );
+        }
 
-      return { company, user, employee };
-    });
+        if (err.code === 'P2003') {
+          // Foreign key violation — likely references missing seed data
+          throw new BadRequestException(
+            'Registration cannot be completed at this time. Please contact support.',
+          );
+        }
+      }
+      // Re-throw non-P2002/P2003 errors as-is (global filter will handle)
+      throw err;
+    }
 
     const tokens = await this.issueTokenPair(result.user.id, result.user.email, result.company.id);
     return {
       company: { id: result.company.id, name: result.company.name, slug: result.company.slug },
       user: { id: result.user.id, email: result.user.email },
       ...tokens,
+    };
+  }
+
+  /**
+   * Verify a company owner's email address using a verification token.
+   * On success the company moves from PENDING_EMAIL_VERIFICATION to PENDING_APPROVAL.
+   */
+  async verifyEmail(dto: VerifyEmailDto) {
+    // Decode the verification token to get the userId
+    let payload: { sub: string; type: string };
+    try {
+      payload = this.jwtService.verify(dto.token, {
+        secret: this.configService.get<string>('jwt.accessSecret'),
+      });
+    } catch {
+      throw new BadRequestException('Invalid or expired verification token.');
+    }
+
+    if (payload.type !== 'email_verify') {
+      throw new BadRequestException('Invalid token type.');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      include: { company: true },
+    });
+
+    if (!user) {
+      throw new BadRequestException('User not found.');
+    }
+
+    if (user.isEmailVerified) {
+      throw new BadRequestException('Email is already verified.');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // Mark user as email verified
+      await tx.user.update({
+        where: { id: user.id },
+        data: { isEmailVerified: true },
+      });
+
+      // Move company to PENDING_APPROVAL if it's still in PENDING_EMAIL_VERIFICATION
+      if (user.company && user.company.status === 'PENDING_EMAIL_VERIFICATION') {
+        await tx.company.update({
+          where: { id: user.company.id },
+          data: { status: 'PENDING_APPROVAL' },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            companyId: user.company.id,
+            userId: user.id,
+            action: 'EMAIL_VERIFIED',
+            entityType: 'Company',
+            entityId: user.company.id,
+            metadata: { newStatus: 'PENDING_APPROVAL' },
+          },
+        });
+      }
+    });
+
+    return {
+      message: 'Email verified successfully.',
+      status: user.company?.status === 'PENDING_EMAIL_VERIFICATION' ? 'PENDING_APPROVAL' : 'VERIFIED',
+    };
+  }
+
+  /**
+   * Generate an email verification token for the current user.
+   */
+  async sendVerificationEmail(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new BadRequestException('User not found.');
+
+    if (user.isEmailVerified) {
+      return { message: 'Email is already verified.', alreadyVerified: true };
+    }
+
+    const token = this.jwtService.sign(
+      { sub: userId, type: 'email_verify' },
+      {
+        secret: this.configService.get<string>('jwt.accessSecret'),
+        expiresIn: '24h',
+      },
+    );
+
+    this.logger.log(`Verification email token generated for user ${userId}`);
+    // TODO: Send actual email with the verification link
+    // The link would be: https://app.example.com/verify-email?token=${token}
+
+    return {
+      message: 'Verification email sent.',
+      // In development, return the token for testing
+      ...(process.env.NODE_ENV !== 'production' ? { devToken: token } : {}),
     };
   }
 
@@ -134,8 +310,26 @@ export class AuthService {
 
     if (dto.companySlug) {
       const company = await this.prisma.company.findUnique({ where: { slug: dto.companySlug } });
-      if (!company || !company.isActive) {
+      if (!company) {
         throw new UnauthorizedException('Invalid company, credentials, or account is inactive.');
+      }
+      if (!company.isActive) {
+        if (company.status === 'PENDING_EMAIL_VERIFICATION') {
+          throw new UnauthorizedException(
+            'Please verify your email address before logging in. Check your inbox for the verification link.',
+          );
+        }
+        if (company.status === 'PENDING_APPROVAL') {
+          throw new UnauthorizedException(
+            'Your company registration is pending approval from the platform administrator. You will be notified once approved.',
+          );
+        }
+        if (company.status === 'REJECTED') {
+          throw new UnauthorizedException(
+            `Your company registration has been rejected${company.rejectionReason ? `: ${company.rejectionReason}` : ''}. Please contact support for assistance.`,
+          );
+        }
+        throw new UnauthorizedException('Your company account is inactive. Please contact support.');
       }
       companyId = company.id;
     }

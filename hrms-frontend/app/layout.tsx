@@ -24,8 +24,14 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'HRMS',
-  description: 'Enterprise HR Management System',
+  title: 'HRMS Platform — All-in-one HRMS for growing companies',
+  description: 'From attendance to payroll, manage your entire workforce in one intelligent platform. Smart, secure, and built for teams of all sizes. Start your free trial today.',
+  keywords: ['HRMS', 'HR platform', 'payroll', 'attendance', 'HR software', 'workforce management', 'employee management'],
+  openGraph: {
+    title: 'HRMS Platform — All-in-one HRMS for growing companies',
+    description: 'From attendance to payroll, manage your entire workforce in one intelligent platform.',
+    type: 'website',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

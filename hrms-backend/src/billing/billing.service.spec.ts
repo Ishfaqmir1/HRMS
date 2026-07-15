@@ -51,6 +51,79 @@ describe('BillingService', () => {
     (service as any).stripe = null;
   });
 
+  // ====================================================================
+  // 1. findAllPlans (public endpoint)
+  // ====================================================================
+  describe('1. findAllPlans', () => {
+    it('returns only active plans sorted by sortOrder', async () => {
+      const plans = [
+        { id: 'plan-1', name: 'Starter', sortOrder: 0, isActive: true },
+        { id: 'plan-2', name: 'Growth', sortOrder: 1, isActive: true },
+        { id: 'plan-3', name: 'Enterprise', sortOrder: 2, isActive: true },
+      ];
+      prisma.billingPlan.findMany.mockResolvedValue(plans);
+
+      const result = await service.findAllPlans();
+
+      expect(result).toEqual(plans);
+      expect(prisma.billingPlan.findMany).toHaveBeenCalledWith({
+        where: { isActive: true },
+        orderBy: { sortOrder: 'asc' },
+      });
+    });
+
+    it('excludes inactive plans from results', async () => {
+      const activePlans = [
+        { id: 'plan-1', name: 'Starter', sortOrder: 0, isActive: true },
+        { id: 'plan-3', name: 'Enterprise', sortOrder: 2, isActive: true },
+      ];
+      prisma.billingPlan.findMany.mockResolvedValue(activePlans);
+
+      const result = await service.findAllPlans();
+
+      // Only active plans returned
+      expect(result).toHaveLength(2);
+      expect(result.every(p => p.isActive)).toBe(true);
+      // The Prisma query filters by isActive: true
+      expect(prisma.billingPlan.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { isActive: true },
+        }),
+      );
+    });
+
+    it('returns empty array when no plans exist', async () => {
+      prisma.billingPlan.findMany.mockResolvedValue([]);
+
+      const result = await service.findAllPlans();
+
+      expect(result).toEqual([]);
+    });
+
+    it('returns plans sorted by sortOrder ascending', async () => {
+      const unsorted = [
+        { id: 'plan-3', name: 'Enterprise', sortOrder: 2, isActive: true },
+        { id: 'plan-1', name: 'Starter', sortOrder: 0, isActive: true },
+        { id: 'plan-2', name: 'Growth', sortOrder: 1, isActive: true },
+      ];
+      prisma.billingPlan.findMany.mockResolvedValue(unsorted);
+
+      const result = await service.findAllPlans();
+
+      // Service expects Prisma to sort; verify the query includes sortOrder
+      expect(prisma.billingPlan.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: { sortOrder: 'asc' },
+        }),
+      );
+      // The result order reflects what Prisma returns (mocked as unsorted above)
+      expect(result).toEqual(unsorted);
+    });
+  });
+
+  // ====================================================================
+  // 2. Employee Limit Check
+  // ====================================================================
   it('treats an exact employee limit as allowed', async () => {
     prisma.company.findUnique.mockResolvedValue({ id: 'company-1', billingPlan: { maxEmployees: 10 } });
     prisma.employee.count.mockResolvedValue(10);
@@ -62,6 +135,9 @@ describe('BillingService', () => {
     });
   });
 
+  // ====================================================================
+  // 3. Subscription Update
+  // ====================================================================
   it('persists the selected billing cycle on subscription updates', async () => {
     jest.spyOn(service, 'findOnePlan').mockResolvedValue({
       id: 'plan-1',

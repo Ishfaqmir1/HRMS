@@ -136,7 +136,7 @@ async function main() {
   console.log('Seeding demo company + super admin...');
   const demoCompany = await prisma.company.upsert({
     where: { slug: 'demo-company' },
-    update: {},
+    update: { isActive: true, status: 'ACTIVE' },
     create: {
       name: 'Demo Company Pvt Ltd',
       slug: 'demo-company',
@@ -144,6 +144,8 @@ async function main() {
       size: '11-50',
       currency: 'USD',
       timezone: 'UTC',
+      isActive: true,
+      status: 'ACTIVE',
     },
   });
 

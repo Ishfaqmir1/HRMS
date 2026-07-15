@@ -43,11 +43,17 @@ describe('BillingService', () => {
     get: jest.fn(),
   } as unknown as ConfigService;
 
+  const documentTemplatesService = {
+    generatePdf: jest.fn().mockResolvedValue(Buffer.from('test-pdf')),
+    generateDocument: jest.fn().mockResolvedValue({ html: '', variables: {} }),
+    findDefaultTemplate: jest.fn(),
+  } as any;
+
   let service: BillingService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new BillingService(prisma, configService);
+    service = new BillingService(prisma, configService, documentTemplatesService);
     (service as any).stripe = null;
   });
 

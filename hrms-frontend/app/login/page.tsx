@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -8,6 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { api } from '@/lib/api-client';
 import { saveSession } from '@/lib/auth';
+import { useAuth, useAuthActions } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input, Label, FieldError } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -24,12 +25,21 @@ export default function LoginPage() {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const auth = useAuth();
+  const { refresh: refreshAuth } = useAuthActions();
 
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
+
+  // If auth state already detected our session, navigate immediately
+  useEffect(() => {
+    if (auth.isAuthenticated && !submitting) {
+      router.push('/dashboard');
+    }
+  }, [auth.isAuthenticated, submitting, router]);
 
   async function onSubmit(values: FormValues) {
     setServerError(null);
@@ -42,6 +52,10 @@ export default function LoginPage() {
       });
       const { accessToken, refreshToken } = data.data;
       saveSession({ accessToken, refreshToken });
+      // Force auth context to re-check localStorage immediately
+      // This prevents the layout from seeing stale isAuthenticated=false
+      // and redirecting back to /login
+      await refreshAuth();
       router.push('/dashboard');
     } catch (err: unknown) {
       const message = (err as any)?.response?.data?.message || (err instanceof Error ? err.message : 'Login failed. Check your credentials.');

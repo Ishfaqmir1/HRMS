@@ -150,37 +150,62 @@ export const MENU_CONFIG: MenuSection[] = [
         href: '/admin/dashboard',
         label: 'Platform Dashboard',
         icon: LayoutDashboard,
+        superAdminOnly: true,
         showOnMobile: true,
+      },
+      {
+        href: '/admin/companies/pending',
+        label: 'Pending Approvals',
+        icon: Clock,
+        superAdminOnly: true,
       },
       {
         href: '/companies',
         label: 'All Companies',
         icon: Home,
+        superAdminOnly: true,
       },
       {
-        href: '/admin/audit-logs',
-        label: 'Audit Logs',
-        icon: FileText,
-      },
-      {
-        href: '/billing',
-        label: 'Billing',
+        href: '/admin/billing/overview',
+        label: 'Billing Overview',
         icon: DollarSign,
+        superAdminOnly: true,
       },
       {
         href: '/admin/billing/plans',
         label: 'Plan Management',
         icon: CreditCard,
+        superAdminOnly: true,
+      },
+      {
+        href: '/admin/audit-logs',
+        label: 'Audit Logs',
+        icon: FileText,
+        superAdminOnly: true,
+      },
+      {
+        href: '/admin/analytics',
+        label: 'Analytics',
+        icon: BarChart3,
+        superAdminOnly: true,
+      },
+      {
+        href: '/admin/users',
+        label: 'Platform Users',
+        icon: Users,
+        superAdminOnly: true,
+      },
+      {
+        href: '/admin/roles',
+        label: 'Platform Roles',
+        icon: Shield,
+        superAdminOnly: true,
       },
       {
         href: '/admin/settings',
         label: 'Platform Settings',
         icon: Settings,
-      },
-      {
-        href: '/analytics',
-        label: 'Analytics',
-        icon: BarChart3,
+        superAdminOnly: true,
       },
     ],
   },
@@ -475,6 +500,9 @@ export const ROUTE_GUARDS: RouteGuard[] = [
 
   // Super Admin only
   { path: '/admin/dashboard', roles: ['super-admin'], exact: true },
+  { path: '/admin/companies/pending', roles: ['super-admin'], exact: true },
+  { path: '/admin/billing/overview', roles: ['super-admin'], exact: true },
+  { path: '/admin/analytics', roles: ['super-admin'], exact: true },
   { path: '/companies', roles: ['super-admin'], exact: true },
   { path: '/companies/', roles: ['super-admin'] },
 
@@ -518,5 +546,8 @@ export const ROUTE_GUARDS: RouteGuard[] = [
   // Admin billing — super admin only
   { path: '/admin/billing/plans', roles: ['super-admin'], exact: true },
   { path: '/admin/audit-logs', roles: ['super-admin'], exact: true },
+  { path: '/admin/users', roles: ['super-admin'], exact: true },
+  { path: '/admin/roles', roles: ['super-admin'], exact: true },
+  { path: '/admin/roles/', roles: ['super-admin'] },
   { path: '/admin/settings', roles: ['super-admin'], exact: true },
 ];

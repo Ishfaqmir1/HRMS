@@ -212,6 +212,10 @@ export default function AdminDashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/admin/companies/pending" className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-white px-4 py-2 text-sm font-medium text-ink-soft hover:bg-paper hover:text-ink transition-colors">
+            <Clock size={14} />
+            Pending Approvals
+          </Link>
           <Link href="/companies" className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-white px-4 py-2 text-sm font-medium text-ink-soft hover:bg-paper hover:text-ink transition-colors">
             <Building2 size={14} />
             Manage Companies

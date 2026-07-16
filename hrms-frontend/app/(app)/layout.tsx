@@ -13,7 +13,7 @@ const ProtectedRoute = lazy(() => import('@/components/route-guard').then(m => (
 
 // Minimal fallback while layout chunks load — avoids layout shift
 function LayoutFallback({ children }: { children: React.ReactNode }) {
-  return <main className="flex-1 px-4 pb-24 pt-5 md:pb-8 sm:px-6 sm:pt-6 lg:px-8">{children}</main>;
+  return <main className="page-enter flex-1 px-4 pb-24 pt-5 md:pb-8 sm:px-6 sm:pt-6 lg:px-8">{children}</main>;
 }
 
 const BOTTOM_NAV_PATHS = ['/dashboard', '/attendance', '/leave', '/employees', '/ess'];
@@ -23,18 +23,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { isLoaded, isAuthenticated } = useAuth();
-  const [checked, setChecked] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
 
+  // Redirect unauthenticated users immediately (no full-screen spinner delay)
   useEffect(() => {
     if (isLoaded && !isAuthenticated) {
       router.replace('/login');
-    } else if (isLoaded && isAuthenticated) {
-      setChecked(true);
     }
   }, [isLoaded, isAuthenticated, router]);
 
@@ -81,18 +79,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [isDragging, dragOffset]);
 
   const showBottomNav = BOTTOM_NAV_PATHS.some((p) => pathname === p || pathname?.startsWith(p + '/'));
-
-  if (!checked) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-paper">
-        <div className="flex flex-col items-center gap-3">
-          <h1 className="sr-only">Loading</h1>
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-accent" />
-          <p className="text-sm text-gray-700">Loading...</p>
-        </div>
-      </main>
-    );
-  }
 
   return (
     <div className="relative min-h-screen bg-paper">
@@ -154,11 +140,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <main className="page-enter flex-1 px-4 pb-24 pt-5 md:pb-8 sm:px-6 sm:pt-6 lg:px-8">
           {/* ProtectedRoute has its own Suspense with an empty fallback to avoid
               rendering children before the guard validates permissions */}
-          <Suspense fallback={<LayoutFallback>{children}</LayoutFallback>}>
-            <ProtectedRoute>
-              {children}
-            </ProtectedRoute>
-          </Suspense>
+          {/* key={pathname} re-triggers the CSS fade-in animation on every route change,
+              making transitions feel smooth instead of instant/jarring */}
+          <div key={pathname} className="page-enter">
+            <Suspense fallback={<LayoutFallback>{children}</LayoutFallback>}>
+              <ProtectedRoute>
+                {children}
+              </ProtectedRoute>
+            </Suspense>
+          </div>
         </main>
 
         {/* Mobile bottom navigation */}

@@ -4,16 +4,17 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api, unwrap } from '@/lib/api-client';
-import { Company, CompanyDetail } from '@/lib/types';
+import { Company, CompanyDetail, ImpersonateResult } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input, Label } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
+import { saveSession } from '@/lib/auth';
 import {
   Building2, ArrowLeft, Save, CheckCircle2, XCircle, Clock,
   Globe, Upload, ShieldCheck, FileText, Users, HardDrive, Package,
-  Edit3,
+  Edit3, LogIn, ExternalLink, Shield,
 } from 'lucide-react';
 
 // ──────────────────────────────────────────────────────────────────
@@ -151,6 +152,47 @@ function DocumentUploadCard({
 }
 
 // ──────────────────────────────────────────────────────────────────
+// Impersonate Button
+// ──────────────────────────────────────────────────────────────────
+
+function ImpersonateButton({ companyId, companyName }: { companyId: string; companyName: string }) {
+  const router = useRouter();
+  const [impersonating, setImpersonating] = useState(false);
+
+  const impersonateMut = useMutation({
+    mutationFn: (id: string) => api.post(`/companies/${id}/impersonate`),
+    onSuccess: (res) => {
+      const data = res.data as ImpersonateResult;
+      if (data.accessToken) {
+        saveSession({ accessToken: data.accessToken, refreshToken: '' });
+        // Redirect to the impersonated company's dashboard
+        router.push('/dashboard');
+      }
+    },
+    onError: () => {
+      setImpersonating(false);
+      alert('Failed to impersonate. Please try again.');
+    },
+  });
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="border-accent/30 text-accent hover:bg-accent/5"
+      onClick={() => {
+        setImpersonating(true);
+        impersonateMut.mutate(companyId);
+      }}
+      isLoading={impersonating || impersonateMut.isPending}
+    >
+      <LogIn size={14} className="mr-1.5" />
+      Login as {companyName}
+    </Button>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
 // Main Company Profile Page
 // ──────────────────────────────────────────────────────────────────
 
@@ -284,6 +326,9 @@ export default function CompanyProfilePage() {
           <Button variant="outline" size="sm" onClick={() => router.push('/companies')}>
             <ArrowLeft size={14} /> Back
           </Button>
+          {company.status === 'ACTIVE' && (
+            <ImpersonateButton companyId={company.id} companyName={company.name} />
+          )}
           <Button size="sm" isLoading={saving} onClick={handleSave}>
             <Save size={14} className="mr-1.5" />
             Save Changes

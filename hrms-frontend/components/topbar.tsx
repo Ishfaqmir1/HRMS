@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { LogOut, Menu, Bell, Building2 } from 'lucide-react';
 import { api, unwrap } from '@/lib/api-client';
 import { getRefreshToken } from '@/lib/auth';
@@ -12,17 +12,36 @@ interface TopbarProps {
   onMenuClick?: () => void;
 }
 
+// Cache branding across parent re-renders (avoids repeated API calls on nav)
+let cachedBranding: { logoUrl?: string | null; companyName?: string | null } | null = null;
+let brandingPromise: Promise<void> | null = null;
+
 export function Topbar({ onMenuClick }: TopbarProps) {
   const { profile, permissions } = useAuth();
   const { signOut } = useAuthActions();
-  const [branding, setBranding] = useState<{ logoUrl?: string | null; companyName?: string | null } | null>(null);
+  const [branding, setBranding] = useState<{ logoUrl?: string | null; companyName?: string | null } | null>(cachedBranding);
+  const fetchedRef = useRef(false);
 
   useEffect(() => {
-    // Only fetch branding if user has company.read — avoids 403 noise in network
-    if (!permissions.includes('company.read')) return;
-    unwrap<{ logoUrl?: string | null; companyName?: string | null }>(api.get('/billing/branding'))
-      .then(data => setBranding(data))
-      .catch(() => {});
+    // Only fetch branding if user has company.read — avoids 403 noise
+    if (!permissions.includes('company.read') || fetchedRef.current) return;
+    fetchedRef.current = true;
+
+    if (cachedBranding) {
+      setBranding(cachedBranding);
+      return;
+    }
+
+    // Deduplicate concurrent calls
+    if (!brandingPromise) {
+      brandingPromise = unwrap<{ logoUrl?: string | null; companyName?: string | null }>(api.get('/billing/branding'))
+        .then(data => {
+          cachedBranding = data;
+          setBranding(data);
+        })
+        .catch(() => {});
+    }
+    brandingPromise.then(() => {});
   }, [permissions]);
 
   async function handleLogout() {

@@ -453,7 +453,7 @@ export class AttendanceSecurityService {
   }
 
   async getSecurityLogs(companyId: string, query: SecurityLogQueryDto) {
-    const where: any = { companyId };
+    const where: any = { companyId, employee: { deletedAt: null } };
     if (query.employeeId) where.employeeId = query.employeeId;
     if (query.action) where.action = query.action;
     if (query.status) where.status = query.status;

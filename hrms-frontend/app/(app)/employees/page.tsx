@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { Plus, X, Copy, Check } from 'lucide-react';
 import { api, unwrap } from '@/lib/api-client';
 import { Employee, PaginatedResult } from '@/lib/types';
+import { STALE_TIMES } from '@/lib/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input, Label, FieldError } from '@/components/ui/input';
@@ -38,18 +39,31 @@ type FormValues = z.infer<typeof schema>;
 
 export default function EmployeesPage() {
   const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  // 300ms debounce for search to avoid excessive API calls
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(searchInput), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
   const [showForm, setShowForm] = useState(false);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    isError,
+    error: fetchError,
+  } = useQuery({
     queryKey: ['employees', page, search],
     queryFn: () =>
       unwrap<PaginatedResult<Employee>>(
         api.get('/employees', { params: { page, limit: 10, search: search || undefined } }),
       ),
+    staleTime: STALE_TIMES.EMPLOYEES,
+    retry: 1,
   });
 
   const {
@@ -94,7 +108,7 @@ export default function EmployeesPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="ledger-tab font-serif text-2xl font-semibold text-ink">Employees</h1>
         <Button onClick={() => setShowForm((v) => !v)}>
           {showForm ? <X size={16} /> : <Plus size={16} />}
@@ -123,7 +137,7 @@ export default function EmployeesPage() {
                     </button>
                   </div>
                   <p className="mt-3 text-xs text-ink-faint">
-                    The employee can sign in with their work email and this temporary password. They'll be prompted to
+                    The employee can sign in with their work email and this temporary password. They&apos;ll be prompted to
                     change it on first login.
                   </p>
                 </div>
@@ -221,18 +235,33 @@ export default function EmployeesPage() {
         <CardContent className="pt-5">
           <Input
             placeholder="Search by name, code, or email…"
-            value={search}
+            value={searchInput}
             onChange={(e) => {
-              setSearch(e.target.value);
+              setSearchInput(e.target.value);
               setPage(1);
             }}
             className="mb-4 max-w-sm"
           />
 
-          {isLoading && <p className="text-sm text-ink-faint">Loading employees…</p>}
+          {isLoading && (
+            <div className="flex items-center justify-center py-8">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-accent" />
+              <p className="ml-2 text-sm text-ink-faint">Loading employees…</p>
+            </div>
+          )}
+
+          {isError && !isLoading && (
+            <div className="rounded-xl border border-danger/20 bg-danger/5 px-4 py-4 text-sm text-danger">
+              <p>Failed to load employees.</p>
+              <p className="mt-1 text-xs text-danger/70">
+                {(fetchError as any)?.response?.data?.message || 'Please try again or check your network connection.'}
+              </p>
+            </div>
+          )}
 
           {data && (
             <>
+              <div className="table-responsive">
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-border text-xs uppercase tracking-wide text-ink-faint">
@@ -269,6 +298,7 @@ export default function EmployeesPage() {
                   )}
                 </tbody>
               </table>
+              </div>
 
               <div className="mt-4 flex items-center justify-between text-sm text-ink-faint">
                 <span>

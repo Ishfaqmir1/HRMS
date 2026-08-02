@@ -1,31 +1,101 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisCacheService } from '../redis/redis-cache.service';
 import { CreateLeaveRequestDto, RejectLeaveRequestDto, SetLeaveBalanceDto } from './dto/leave-request.dto';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 
-/** Inclusive day count between two dates. Phase 2 keeps this simple (calendar
- *  days); a later phase can subtract weekends/holidays per employee shift. */
-function daysBetweenInclusive(start: Date, end: Date): number {
-  const ms = end.getTime() - start.getTime();
-  return Math.floor(ms / (1000 * 60 * 60 * 24)) + 1;
+/**
+ * Count leave days between two dates using the sandwich rule:
+ * 1. Count working days (per company AttendancePolicy)
+ * 2. Exclude holidays from the count
+ * 3. Non-working days (weekends) that are sandwiched between leave days
+ *    are also counted (prevents stretching leave around weekends)
+ */
+async function calculateLeaveDays(
+  prisma: PrismaService,
+  companyId: string,
+  startDate: Date,
+  endDate: Date,
+): Promise<number> {
+  // Get company's working days from attendance policy (default Mon-Fri = [1,2,3,4,5])
+  const policy = await prisma.attendancePolicy.findUnique({ where: { companyId } });
+  const workingDays: number[] = policy?.workingDays ?? [1, 2, 3, 4, 5];
+
+  // Get holidays in the date range
+  const holidays = await prisma.holiday.findMany({
+    where: { companyId, date: { gte: startDate, lte: endDate } },
+    select: { date: true },
+  });
+  const holidayDates = new Set<string>();
+  for (const h of holidays) {
+    holidayDates.add(h.date.toISOString().split('T')[0]);
+  }
+
+  // Build array of dates in range
+  const dates: Date[] = [];
+  const current = new Date(startDate);
+  while (current <= endDate) {
+    dates.push(new Date(current));
+    current.setDate(current.getDate() + 1);
+  }
+
+  const isWorkingDay = (d: Date) => workingDays.includes(d.getDay());
+  const isHolidayDate = (d: Date) => holidayDates.has(d.toISOString().split('T')[0]);
+  const isLeaveDay = (d: Date) => isWorkingDay(d) && !isHolidayDate(d);
+
+  // Step 1: Count working days that are not holidays
+  let totalDays = 0;
+  const leaveDayIndices: number[] = [];
+  for (let i = 0; i < dates.length; i++) {
+    if (isLeaveDay(dates[i])) {
+      totalDays++;
+      leaveDayIndices.push(i);
+    }
+  }
+
+  // Step 2: Sandwich rule — count non-working days sandwiched between leave days
+  for (let i = 0; i < dates.length; i++) {
+    if (!isLeaveDay(dates[i])) {
+      const hasWorkingBefore = dates.slice(0, i).some(d => isLeaveDay(d));
+      const hasWorkingAfter = dates.slice(i + 1).some(d => isLeaveDay(d));
+      if (hasWorkingBefore && hasWorkingAfter) {
+        totalDays++;
+      }
+    }
+  }
+
+  return Math.max(totalDays, 1); // At minimum 1 day
 }
 
 @Injectable()
 export class LeaveService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private cache: RedisCacheService,
+  ) {}
 
   // ---- Balances ----
 
   async myBalances(employeeId: string, year: number = new Date().getFullYear()) {
     return this.prisma.leaveBalance.findMany({
       where: { employeeId, year },
-      include: { leaveType: true },
+      select: {
+        id: true,
+        allocated: true,
+        used: true,
+        carriedForward: true,
+        leaveType: { select: { id: true, name: true, code: true, isPaid: true, requiresApproval: true } },
+      },
     });
   }
 
   async setBalance(companyId: string, dto: SetLeaveBalanceDto) {
-    const employee = await this.prisma.employee.findFirst({ where: { id: dto.employeeId, companyId } });
-    if (!employee) throw new NotFoundException('Employee not found in this company.');
+    // Verify employee exists — use select to only check existence
+    const employeeExists = await this.prisma.employee.findFirst({
+      where: { id: dto.employeeId, companyId },
+      select: { id: true },
+    });
+    if (!employeeExists) throw new NotFoundException('Employee not found in this company.');
 
     return this.prisma.leaveBalance.upsert({
       where: {
@@ -60,7 +130,7 @@ export class LeaveService {
     if (endDate < startDate) {
       throw new BadRequestException('endDate cannot be before startDate.');
     }
-    const totalDays = daysBetweenInclusive(startDate, endDate);
+    const totalDays = await calculateLeaveDays(this.prisma, companyId, startDate, endDate);
 
     const overlapping = await this.prisma.leaveRequest.findFirst({
       where: {
@@ -86,6 +156,9 @@ export class LeaveService {
       }
     }
 
+    // Invalidate dashboard cache for this employee (pending count changes)
+    this.cache.delPattern(`dashboard:${companyId}:${employeeId}*`).catch(() => {});
+
     return this.prisma.leaveRequest.create({
       data: {
         companyId,
@@ -109,7 +182,16 @@ export class LeaveService {
         skip: query.skip,
         take: query.limit,
         orderBy: { createdAt: 'desc' },
-        include: { leaveType: true },
+        select: {
+          id: true,
+          startDate: true,
+          endDate: true,
+          totalDays: true,
+          reason: true,
+          status: true,
+          createdAt: true,
+          leaveType: { select: { id: true, name: true, code: true, isPaid: true } },
+        },
       }),
       this.prisma.leaveRequest.count({ where }),
     ]);
@@ -120,12 +202,17 @@ export class LeaveService {
   }
 
   async cancelMyRequest(employeeId: string, id: string) {
-    const request = await this.prisma.leaveRequest.findFirst({ where: { id, employeeId } });
+    const request = await this.prisma.leaveRequest.findFirst({
+      where: { id, employeeId },
+      select: { id: true, status: true, companyId: true, employeeId: true },
+    });
     if (!request) throw new NotFoundException('Leave request not found.');
     if (request.status !== 'PENDING') {
       throw new BadRequestException('Only pending requests can be cancelled.');
     }
-    return this.prisma.leaveRequest.update({ where: { id }, data: { status: 'CANCELLED' } });
+    const result = await this.prisma.leaveRequest.update({ where: { id }, data: { status: 'CANCELLED' } });
+    this.cache.delPattern(`dashboard:${request.companyId}:${employeeId}*`).catch(() => {});
+    return result;
   }
 
   async findAll(
@@ -160,7 +247,7 @@ export class LeaveService {
   async approve(companyId: string, id: string, approverEmployeeId?: string) {
     const request = await this.getPendingRequest(companyId, id);
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.leaveRequest.update({
         where: { id },
         data: { status: 'APPROVED', approvedById: approverEmployeeId, approvedAt: new Date() },
@@ -168,6 +255,25 @@ export class LeaveService {
 
       if (request.leaveType.isPaid) {
         const year = request.startDate.getFullYear();
+        // Prevent negative leave balance before incrementing
+        const balance = await tx.leaveBalance.findUnique({
+          where: {
+            employeeId_leaveTypeId_year: { employeeId: request.employeeId, leaveTypeId: request.leaveTypeId, year },
+          },
+        });
+        if (balance) {
+          const available = (balance.allocated ?? 0) + (balance.carriedForward ?? 0) - (balance.used ?? 0);
+          if (available < request.totalDays) {
+            throw new BadRequestException(
+              `Cannot approve: insufficient balance. ${available} day(s) available, ${request.totalDays} requested.`,
+            );
+          }
+        } else {
+          // No balance record exists — cannot approve paid leave without allocation
+          throw new BadRequestException(
+            `Cannot approve: no leave balance allocated for this leave type in ${year}.`,
+          );
+        }
         await tx.leaveBalance.upsert({
           where: {
             employeeId_leaveTypeId_year: { employeeId: request.employeeId, leaveTypeId: request.leaveTypeId, year },
@@ -186,11 +292,16 @@ export class LeaveService {
 
       return updated;
     });
+
+    // Invalidate dashboard cache for the employee
+    this.cache.delPattern(`dashboard:${companyId}:${request.employeeId}*`).catch(() => {});
+
+    return result;
   }
 
   async reject(companyId: string, id: string, dto: RejectLeaveRequestDto, approverEmployeeId?: string) {
-    await this.getPendingRequest(companyId, id);
-    return this.prisma.leaveRequest.update({
+    const request = await this.getPendingRequest(companyId, id);
+    const result = await this.prisma.leaveRequest.update({
       where: { id },
       data: {
         status: 'REJECTED',
@@ -199,12 +310,23 @@ export class LeaveService {
         approvedAt: new Date(),
       },
     });
+    // Invalidate dashboard cache for the employee (pending count changes)
+    this.cache.delPattern(`dashboard:${companyId}:${request.employeeId}*`).catch(() => {});
+    return result;
   }
 
   private async getPendingRequest(companyId: string, id: string) {
     const request = await this.prisma.leaveRequest.findFirst({
       where: { id, companyId },
-      include: { leaveType: true },
+      select: {
+        id: true,
+        startDate: true,
+        totalDays: true,
+        employeeId: true,
+        leaveTypeId: true,
+        status: true,
+        leaveType: { select: { id: true, isPaid: true, requiresApproval: true } },
+      },
     });
     if (!request) throw new NotFoundException('Leave request not found.');
     if (request.status !== 'PENDING') {

@@ -1,0 +1,15 @@
+# Temp/scratch files (root level only)
+/*.txt
+/*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+test-results/
+playwright-report/

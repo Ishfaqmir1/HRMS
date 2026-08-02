@@ -65,7 +65,7 @@ export default function ReimbursementsPage() {
   });
 
   const rejectMut = useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) => api.post(`/payroll/reimbursements/${id}/reject`, { reason }, { params: { reason } }),
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => api.post(`/payroll/reimbursements/${id}/reject`, { reason }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['payroll', 'reimbursements'] }),
   });
 

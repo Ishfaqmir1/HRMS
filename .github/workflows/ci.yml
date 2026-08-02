@@ -1,0 +1,158 @@
+name: CI — HRMS Platform
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # ====================================================================
+  # Backend — Unit tests + E2E tests
+  # ====================================================================
+  backend:
+    name: Backend (unit + e2e)
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: postgresql://hrms:hrms_password@localhost:5432/hrms_db?schema=public
+      NODE_ENV: test
+      API_PREFIX: api/v1
+      JWT_ACCESS_SECRET: test-access-secret
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_SECRET: test-refresh-secret
+      JWT_REFRESH_EXPIRES_IN: 7d
+      BCRYPT_SALT_ROUNDS: 10
+      THROTTLE_TTL: 60
+      THROTTLE_LIMIT: 1000
+      SUPER_ADMIN_EMAIL: superadmin@hrms.io
+      SUPER_ADMIN_PASSWORD: ChangeMe123!
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ''
+
+    services:
+      # PostgreSQL 16 from docker-compose
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hrms
+          POSTGRES_PASSWORD: hrms_password
+          POSTGRES_DB: hrms_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hrms"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      # Redis 7 from docker-compose
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: hrms-backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: hrms-backend
+        run: npm ci
+
+      - name: Generate Prisma client
+        working-directory: hrms-backend
+        run: npx prisma generate
+
+      - name: Sync database schema
+        working-directory: hrms-backend
+        run: npx prisma db push --accept-data-loss
+
+      - name: Seed database
+        working-directory: hrms-backend
+        run: npx prisma db seed
+
+      - name: Run unit tests
+        working-directory: hrms-backend
+        run: npm test
+
+      - name: Run e2e tests
+        working-directory: hrms-backend
+        run: npm run test:e2e
+
+  # ====================================================================
+  # Frontend — Build check (no production deploy, just compilation)
+  # ====================================================================
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: hrms-frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: hrms-frontend
+        run: npm ci
+
+      - name: Lint
+        working-directory: hrms-frontend
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Build (production)
+        working-directory: hrms-frontend
+        run: npm run build
+        env:
+          NODE_ENV: production
+          NEXT_TELEMETRY_DISABLED: 1
+
+  # ====================================================================
+  # Summary — Always runs, shows a clean pass/fail badge
+  # ====================================================================
+  summary:
+    name: ✅ CI Summary
+    if: always()
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        run: |
+          echo "## CI Pipeline Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          BACKEND_RESULT="${{ needs.backend.result }}"
+          FRONTEND_RESULT="${{ needs.frontend.result }}"
+
+          if [ "$BACKEND_RESULT" = "success" ] && [ "$FRONTEND_RESULT" = "success" ]; then
+            echo "✅ **All checks passed!**" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          else
+            echo "❌ **Some checks failed**" >> $GITHUB_STEP_SUMMARY
+            echo "- Backend: $BACKEND_RESULT" >> $GITHUB_STEP_SUMMARY
+            echo "- Frontend: $FRONTEND_RESULT" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi

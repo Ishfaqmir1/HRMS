@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -8,9 +8,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { api } from '@/lib/api-client';
 import { saveSession } from '@/lib/auth';
+import { useAuth, useAuthActions } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input, Label, FieldError } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
+import { Lock, Mail, Building2 } from 'lucide-react';
 
 const schema = z.object({
   companySlug: z.string().min(1, 'Enter your company workspace').optional().or(z.literal('')),
@@ -23,12 +25,21 @@ export default function LoginPage() {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const auth = useAuth();
+  const { refresh: refreshAuth } = useAuthActions();
 
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
+
+  // If auth state already detected our session, navigate immediately
+  useEffect(() => {
+    if (auth.isAuthenticated && !submitting) {
+      router.push('/dashboard');
+    }
+  }, [auth.isAuthenticated, submitting, router]);
 
   async function onSubmit(values: FormValues) {
     setServerError(null);
@@ -41,52 +52,75 @@ export default function LoginPage() {
       });
       const { accessToken, refreshToken } = data.data;
       saveSession({ accessToken, refreshToken });
+      // Force auth context to re-check localStorage immediately
+      // This prevents the layout from seeing stale isAuthenticated=false
+      // and redirecting back to /login
+      await refreshAuth();
       router.push('/dashboard');
-    } catch (err: any) {
-      setServerError(err?.response?.data?.message || 'Login failed. Check your credentials.');
+    } catch (err: unknown) {
+      const message = (err as any)?.response?.data?.message || (err instanceof Error ? err.message : 'Login failed. Check your credentials.');
+      setServerError(message);
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-paper px-4">
-      <div className="w-full max-w-sm">
+    <main className="auth-page-bg flex min-h-screen items-center justify-center px-4">
+      <div className="auth-card-enter w-full max-w-sm">
+        {/* Brand Header */}
         <div className="mb-8 text-center">
-          <p className="ledger-tab justify-center font-serif text-2xl font-semibold text-ink">HRMS</p>
-          <p className="mt-2 text-sm text-ink-faint">Sign in to your workspace</p>
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-accent/10 shadow-sm shadow-accent/10">
+            <span className="font-serif text-2xl font-bold text-accent">H</span>
+          </div>
+          <h1 className="font-serif text-2xl font-semibold tracking-tight text-ink">
+            Welcome back
+          </h1>
+          <p className="mt-1.5 text-sm text-ink-faint">Sign in to your HRMS workspace</p>
         </div>
 
-        <Card>
-          <CardContent className="pt-5">
+        <Card className="shadow-lg shadow-ink/[0.04]">
+          <CardContent className="pt-6">
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div>
                 <Label htmlFor="companySlug">Company workspace</Label>
-                <Input
-                  id="companySlug"
-                  placeholder="acme-corp (leave blank for Super Admin)"
-                  {...register('companySlug')}
-                />
+                <div className="relative">
+                  <Building2 size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" />
+                  <Input
+                    id="companySlug"
+                    placeholder="acme-corp (leave blank for Super Admin)"
+                    className="pl-10"
+                    {...register('companySlug')}
+                  />
+                </div>
                 <FieldError message={errors.companySlug?.message} />
               </div>
 
               <div>
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" placeholder="you@company.com" {...register('email')} />
+                <div className="relative">
+                  <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" />
+                  <Input id="email" type="email" placeholder="you@company.com" className="pl-10" {...register('email')} />
+                </div>
                 <FieldError message={errors.email?.message} />
               </div>
 
               <div>
                 <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" placeholder="••••••••" {...register('password')} />
+                <div className="relative">
+                  <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" />
+                  <Input id="password" type="password" placeholder="••••••••" className="pl-10" {...register('password')} />
+                </div>
                 <FieldError message={errors.password?.message} />
               </div>
 
               {serverError && (
-                <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{serverError}</p>
+                <div className="rounded-xl border border-danger/20 bg-danger/5 px-3.5 py-2.5">
+                  <p className="text-sm font-medium text-danger">{serverError}</p>
+                </div>
               )}
 
-              <Button type="submit" className="w-full" isLoading={submitting}>
+              <Button type="submit" className="w-full" size="lg" isLoading={submitting}>
                 Sign in
               </Button>
             </form>
@@ -95,11 +129,11 @@ export default function LoginPage() {
 
         <p className="mt-6 text-center text-sm text-ink-faint">
           New company?{' '}
-          <Link href="/register" className="font-medium text-accent hover:underline">
+          <Link href="/register" className="font-medium text-accent transition-colors hover:text-accent-hover">
             Create a workspace
           </Link>
         </p>
       </div>
-    </div>
+    </main>
   );
 }

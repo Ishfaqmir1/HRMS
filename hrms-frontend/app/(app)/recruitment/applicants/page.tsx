@@ -63,7 +63,7 @@ export default function ApplicantsPage() {
         </Button>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 overflow-x-auto">
         <select value={jobFilter} onChange={e => { setJobFilter(e.target.value); setPage(1); }} className="h-8 rounded-md border border-input bg-background px-2 text-xs">
           <option value="">All Jobs</option>
           {jobs?.items.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}

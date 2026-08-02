@@ -1,18 +1,35 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisCacheService } from '../redis/redis-cache.service';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 
+const DEPT_CACHE_TTL = 600; // 10 minutes
+
 @Injectable()
 export class DepartmentsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private cache: RedisCacheService,
+  ) {}
 
-  create(companyId: string, dto: CreateDepartmentDto) {
-    return this.prisma.department.create({ data: { ...dto, companyId } });
+  async create(companyId: string, dto: CreateDepartmentDto) {
+    const result = await this.prisma.department.create({ data: { ...dto, companyId } });
+    await this.cache.delPattern(`departments:${companyId}:*`);
+    return result;
   }
 
   async findAll(companyId: string, query: PaginationQueryDto) {
+    // Cache the first page without search (common case for dropdowns)
+    if (!query.search && query.page === 1) {
+      const cacheKey = RedisCacheService.key('departments', 'list', companyId);
+      return this.cache.getOrSet(cacheKey, DEPT_CACHE_TTL, () => this._findAll(companyId, query));
+    }
+    return this._findAll(companyId, query);
+  }
+
+  private async _findAll(companyId: string, query: PaginationQueryDto) {
     const where = {
       companyId,
       deletedAt: null,
@@ -52,11 +69,15 @@ export class DepartmentsService {
 
   async update(companyId: string, id: string, dto: UpdateDepartmentDto) {
     await this.findOne(companyId, id);
-    return this.prisma.department.update({ where: { id }, data: dto });
+    const result = await this.prisma.department.update({ where: { id }, data: dto });
+    await this.cache.delPattern(`departments:${companyId}:*`);
+    return result;
   }
 
   async remove(companyId: string, id: string) {
     await this.findOne(companyId, id);
-    return this.prisma.department.update({ where: { id }, data: { deletedAt: new Date(), isActive: false } });
+    const result = await this.prisma.department.update({ where: { id }, data: { deletedAt: new Date(), isActive: false } });
+    await this.cache.delPattern(`departments:${companyId}:*`);
+    return result;
   }
 }

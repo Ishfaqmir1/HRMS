@@ -116,6 +116,33 @@ export interface Shift {
 // Admin — Company
 // ============================================================
 
+export interface CompanyOwner {
+  id: string;
+  email: string;
+  status: string;
+  lastLoginAt: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  phone: string | null;
+}
+
+export interface BillingPlanSummary {
+  id: string;
+  name: string;
+  slug: string;
+  maxEmployees: number;
+  maxStorageGB: number;
+}
+
+export type CompanyStatus =
+  | 'PENDING_EMAIL_VERIFICATION'
+  | 'PENDING_APPROVAL'
+  | 'ACTIVE'
+  | 'SUSPENDED'
+  | 'TRIAL_EXPIRED'
+  | 'CANCELLED'
+  | 'REJECTED';
+
 export interface Company {
   id: string;
   name: string;
@@ -126,10 +153,109 @@ export interface Company {
   timezone: string;
   locale: string;
   currency: string;
-  status: 'ACTIVE' | 'SUSPENDED' | 'TRIAL_EXPIRED' | 'CANCELLED';
+  country?: string | null;
+  gstNumber?: string | null;
+  panNumber?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  domain?: string | null;
+  phone?: string | null;
+  status: CompanyStatus;
+  subscriptionPlan: string;
   isActive: boolean;
+  trialEndsAt: string | null;
+  billingEmail: string | null;
+  billingCycle: string;
+  verifiedAt: string | null;
+  verifiedById: string | null;
+  rejectionReason: string | null;
   createdAt: string;
+  updatedAt: string;
+  owner: CompanyOwner | null;
+  billingPlan: BillingPlanSummary | null;
+  employeeCount: number;
+  userCount: number;
   _count?: { employees: number; users: number };
+}
+
+export interface CompanyDetail extends Company {
+  branding: any | null;
+  registrationCert?: string | null;
+  addressProof?: string | null;
+  ownerIdDoc?: string | null;
+  _count: {
+    employees: number;
+    users: number;
+    departments: number;
+    branches: number;
+    assets: number;
+    leaveRequests: number;
+    attendanceRecords: number;
+    payrollRuns: number;
+    trainings: number;
+  };
+  users: Array<{
+    id: string;
+    email: string;
+    status: string;
+    lastLoginAt: string | null;
+    isEmailVerified: boolean;
+    employee: {
+      firstName: string | null;
+      lastName: string | null;
+      phone: string | null;
+      employeeCode: string | null;
+    } | null;
+  }>;
+}
+
+export interface CompanyUser {
+  id: string;
+  email: string;
+  status: string;
+  lastLoginAt: string | null;
+  isEmailVerified: boolean;
+  createdAt: string;
+  employee: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    employeeCode: string;
+    phone: string | null;
+  } | null;
+  userRoles: Array<{
+    role: {
+      id: string;
+      name: string;
+      slug: string;
+      isSystem: boolean;
+    };
+  }>;
+}
+
+export interface CompanyAuditLog {
+  id: string;
+  action: string;
+  entityType: string | null;
+  entityId: string | null;
+  metadata: any;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  user: {
+    id: string;
+    email: string;
+    employee: { firstName: string | null; lastName: string | null } | null;
+  } | null;
+}
+
+export interface ImpersonateResult {
+  accessToken: string;
+  user: { id: string; email: string; roles: string[] };
+  company: { id: string; name: string; slug: string };
 }
 
 // ============================================================
@@ -204,7 +330,8 @@ export interface PayrollRun {
   id: string;
   month: number;
   year: number;
-  status: 'DRAFT' | 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
+  version?: number;
+  status: 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
   processedById?: string | null;
   processedAt?: string | null;
   totalGross: number;
@@ -240,7 +367,32 @@ export interface Payslip {
   status: 'DRAFT' | 'APPROVED' | 'PAID';
   paidAt?: string | null;
   notes?: string | null;
+  adjustments?: Record<string, unknown> | null;
   createdAt: string;
+  previousPayslip?: Payslip | null;
+}
+
+export interface PayrollRunVersion {
+  id: string;
+  version: number;
+  status: string;
+  totalGross: number;
+  totalNet: number;
+  employeeCount: number;
+  processedAt: string | null;
+  recalcReason: string | null;
+  createdAt: string;
+  previousRunId: string | null;
+}
+
+export interface PayslipDiff {
+  [field: string]: { from: number; to: number; diff: number };
+}
+
+export interface PayslipCompare {
+  current: Payslip;
+  previous: Payslip | null;
+  differences: PayslipDiff | null;
 }
 
 export interface Loan {
@@ -376,6 +528,34 @@ export interface RecruitmentDashboard {
 // Attendance Regularization
 // ============================================================
 
+// ============================================================
+// Attendance Analytics
+// ============================================================
+
+export interface AttendanceTrendPoint {
+  period: string;
+  date_label: string;
+  present: number;
+  absent: number;
+  late: number;
+  halfDay: number;
+  onLeave: number;
+  avgWorkedMinutes: number;
+  totalOvertimeMinutes: number;
+}
+
+export interface DepartmentAttendanceSummary {
+  departmentId: string | null;
+  departmentName: string;
+  employeeCount: number;
+  present: number;
+  absent: number;
+  late: number;
+  halfDay: number;
+  onLeave: number;
+  attendanceRate: number;
+}
+
 export interface AttendanceRegularization {
   id: string;
   companyId: string;
@@ -442,4 +622,86 @@ export interface Branch {
   latitude?: number | null;
   longitude?: number | null;
   geoFenceRadiusMeters?: number | null;
+}
+
+// ============================================================
+// Document Builder
+// ============================================================
+
+export type DocumentTemplateCategory =
+  | 'OFFER_LETTER'
+  | 'APPOINTMENT_LETTER'
+  | 'EXPERIENCE_LETTER'
+  | 'RELIEVING_LETTER'
+  | 'SALARY_CERTIFICATE'
+  | 'CONFIRMATION_LETTER'
+  | 'PROMOTION_LETTER'
+  | 'TRANSFER_LETTER'
+  | 'PAYSLIP'
+  | 'OTHER';
+
+export const DOCUMENT_CATEGORY_LABELS: Record<DocumentTemplateCategory, string> = {
+  OFFER_LETTER: 'Offer Letter',
+  APPOINTMENT_LETTER: 'Appointment Letter',
+  EXPERIENCE_LETTER: 'Experience Letter',
+  RELIEVING_LETTER: 'Relieving Letter',
+  SALARY_CERTIFICATE: 'Salary Certificate',
+  CONFIRMATION_LETTER: 'Confirmation Letter',
+  PROMOTION_LETTER: 'Promotion Letter',
+  TRANSFER_LETTER: 'Transfer Letter',
+  PAYSLIP: 'Payslip Template',
+  OTHER: 'Other',
+};
+
+export const DOCUMENT_CATEGORY_COLORS: Record<DocumentTemplateCategory, string> = {
+  OFFER_LETTER: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  APPOINTMENT_LETTER: 'bg-blue-100 text-blue-700 border-blue-200',
+  EXPERIENCE_LETTER: 'bg-purple-100 text-purple-700 border-purple-200',
+  RELIEVING_LETTER: 'bg-amber-100 text-amber-700 border-amber-200',
+  SALARY_CERTIFICATE: 'bg-rose-100 text-rose-700 border-rose-200',
+  CONFIRMATION_LETTER: 'bg-cyan-100 text-cyan-700 border-cyan-200',
+  PROMOTION_LETTER: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+  TRANSFER_LETTER: 'bg-orange-100 text-orange-700 border-orange-200',
+  PAYSLIP: 'bg-sky-100 text-sky-700 border-sky-200',
+  OTHER: 'bg-gray-100 text-gray-700 border-gray-200',
+};
+
+export interface DocumentTemplate {
+  id: string;
+  name: string;
+  slug: string;
+  category: DocumentTemplateCategory;
+  content?: string;
+  description: string | null;
+  variables: string[] | null;
+  isDefault: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GeneratedDocument {
+  id: string;
+  title: string;
+  documentType: DocumentTemplateCategory;
+  fileUrl: string;
+  fileType: string;
+  fileSize: number | null;
+  generatedAt: string;
+  employee: { id: string; firstName: string; lastName: string; employeeCode: string } | null;
+  template: { id: string; name: string; category: DocumentTemplateCategory } | null;
+}
+
+/** Shorthand for the generate endpoint response */
+export interface DocumentGenerationResult {
+  documents: GeneratedDocument[];
+  count: number;
+  templateName: string;
+}
+
+/** Shorthand for the preview endpoint response */
+export interface DocumentPreviewResult {
+  html: string;
+  variables: Record<string, string>;
+  templateName?: string;
 }

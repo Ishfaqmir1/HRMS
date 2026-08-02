@@ -1,8 +1,9 @@
-import { Body, Controller, Post, Req } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { AuthService } from './auth.service';
-import { RegisterDto } from './dto/register.dto';
+import { RegisterDto, VerifyEmailDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { Public } from '../common/decorators/public.decorator';
@@ -14,6 +15,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
+  @Throttle({ default: { limit: 50, ttl: 60000 } }) // 50 requests per minute
   @Post('register')
   @ApiOperation({ summary: 'Self-service tenant signup: creates a new Company + Owner user' })
   register(@Body() dto: RegisterDto) {
@@ -21,6 +23,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 200, ttl: 60000 } }) // 200 requests per minute
   @Post('login')
   @ApiOperation({ summary: 'Authenticate and receive an access/refresh token pair' })
   login(@Body() dto: LoginDto, @Req() req: Request) {
@@ -31,18 +34,43 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 200, ttl: 60000 } }) // 200 requests per minute
   @Post('refresh')
   @ApiOperation({ summary: 'Exchange a valid refresh token for a new token pair (rotates refresh token)' })
   refresh(@Body() dto: RefreshTokenDto) {
     return this.authService.refresh(dto.refreshToken);
   }
 
+  @Public()
+  @Throttle({ default: { limit: 50, ttl: 60000 } })
+  @Post('verify-email')
+  @ApiOperation({ summary: 'Verify email address with a verification token' })
+  verifyEmail(@Body() dto: VerifyEmailDto) {
+    return this.authService.verifyEmail(dto);
+  }
+
+  @ApiBearerAuth()
+  @Post('send-verification')
+  @ApiOperation({ summary: 'Send a new email verification link to the authenticated user' })
+  sendVerification(@CurrentUser('userId') userId: string) {
+    return this.authService.sendVerificationEmail(userId);
+  }
+
+  @ApiBearerAuth()
+  @Get('me')
+  @ApiOperation({ summary: 'Returns the authenticated user\'s roles and permissions' })
+  getMe(@CurrentUser('userId') userId: string) {
+    return this.authService.getMe(userId);
+  }
+
+  @ApiBearerAuth()
   @Post('logout')
   @ApiOperation({ summary: 'Revoke the given refresh token (logs out current device)' })
   logout(@CurrentUser() user: AuthenticatedUser, @Body() dto: RefreshTokenDto) {
     return this.authService.logout(user.userId, dto.refreshToken);
   }
 
+  @ApiBearerAuth()
   @Post('logout-all')
   @ApiOperation({ summary: 'Revoke all refresh tokens for the current user (logs out everywhere)' })
   logoutAll(@CurrentUser() user: AuthenticatedUser) {

@@ -15,11 +15,14 @@ import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { TenantId } from '../common/decorators/tenant.decorator';
 import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { Permissions } from '../common/decorators/permissions.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { SystemRole } from '../common/enums/role.enum';
 
 @ApiTags('Leave')
 @ApiBearerAuth()
-@UseGuards(PermissionsGuard)
+@UseGuards(PermissionsGuard, RolesGuard)
 @Controller('leave')
 export class LeaveController {
   constructor(private readonly leaveService: LeaveService) {}
@@ -63,6 +66,7 @@ export class LeaveController {
 
   @Get('requests')
   @Permissions('leave.approve')
+  @Roles(SystemRole.HR_MANAGER, SystemRole.HR, SystemRole.DEPARTMENT_HEAD, SystemRole.COMPANY_OWNER)
   @ApiQuery({ name: 'employeeId', required: false })
   @ApiQuery({ name: 'status', required: false })
   findAll(
@@ -76,12 +80,14 @@ export class LeaveController {
 
   @Post('requests/:id/approve')
   @Permissions('leave.approve')
+  @Roles(SystemRole.HR_MANAGER, SystemRole.HR, SystemRole.DEPARTMENT_HEAD, SystemRole.COMPANY_OWNER)
   approve(@TenantId() companyId: string, @CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.leaveService.approve(companyId, id, user.employeeId ?? undefined);
   }
 
   @Post('requests/:id/reject')
   @Permissions('leave.approve')
+  @Roles(SystemRole.HR_MANAGER, SystemRole.HR, SystemRole.DEPARTMENT_HEAD, SystemRole.COMPANY_OWNER)
   reject(
     @TenantId() companyId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -93,6 +99,7 @@ export class LeaveController {
 
   @Post('balances')
   @Permissions('leavebalance.update')
+  @Roles(SystemRole.HR_MANAGER, SystemRole.COMPANY_OWNER)
   setBalance(@TenantId() companyId: string, @Body() dto: SetLeaveBalanceDto) {
     return this.leaveService.setBalance(companyId, dto);
   }

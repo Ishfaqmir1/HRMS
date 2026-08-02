@@ -23,7 +23,7 @@ export default function PayrollPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="ledger-tab font-serif text-2xl font-semibold text-ink">Payroll</h1>
         <div className="flex gap-2">
           <Link href="/payroll/runs"><Button variant="outline" size="sm">Payroll Runs</Button></Link>
@@ -87,8 +87,8 @@ export default function PayrollPage() {
             </CardHeader>
             <CardContent>
               {data.latestRun ? (
-                <div className="flex items-center justify-between">
-                  <div className="flex gap-6 text-sm">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-wrap gap-4 text-sm sm:gap-6">
                     <div>
                       <p className="text-xs text-ink-faint">Period</p>
                       <p className="font-medium text-ink">{MONTHS[data.latestRun.month - 1]} {data.latestRun.year}</p>
@@ -127,6 +127,7 @@ export default function PayrollPage() {
                 <CardTitle>{data.currentYear} Overview</CardTitle>
               </CardHeader>
               <CardContent>
+                <div className="table-responsive">
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-border text-xs uppercase tracking-wide text-ink-faint">
@@ -149,6 +150,7 @@ export default function PayrollPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </CardContent>
             </Card>
           )}

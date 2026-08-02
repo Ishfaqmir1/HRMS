@@ -14,12 +14,12 @@ import { JwtStrategy } from './strategies/jwt.strategy';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: config.get<string>('jwt.accessSecret'),
-        signOptions: { expiresIn: config.get<string>('jwt.accessExpiresIn') },
+        signOptions: { expiresIn: config.get<string>('jwt.accessExpiresIn') as any },
       }),
     }),
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],
-  exports: [AuthService],
+  exports: [AuthService, JwtStrategy],
 })
 export class AuthModule {}

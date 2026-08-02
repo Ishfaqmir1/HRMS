@@ -107,6 +107,35 @@ export class CreateReimbursementCategoryDto {
 export class UpdateReimbursementCategoryDto extends PartialType(CreateReimbursementCategoryDto) {}
 
 // ============================================================================
+// Payroll Recalculation & Versioning
+// ============================================================================
+export class RecalculatePayrollRunDto {
+  @ApiProperty({ description: 'Reason for the recalculation' })
+  @IsString()
+  reason: string;
+
+  @ApiPropertyOptional({ description: 'Override overtime adjustments (employeeId: extra minutes)' })
+  @IsOptional()
+  overtimeAdjustments?: Record<string, number>;
+
+  @ApiPropertyOptional({ description: 'Override bonus adjustments (employeeId: bonus amount)' })
+  @IsOptional()
+  bonusAdjustments?: Record<string, number>;
+}
+
+export class PayrollRunVersionDto {
+  @ApiProperty() id: string;
+  @ApiProperty() version: number;
+  @ApiProperty() status: string;
+  @ApiProperty() totalGross: number;
+  @ApiProperty() totalNet: number;
+  @ApiProperty() employeeCount: number;
+  @ApiProperty() processedAt: string | null;
+  @ApiProperty() recalcReason: string | null;
+  @ApiProperty() createdAt: string;
+}
+
+// ============================================================================
 // Reimbursement
 // ============================================================================
 export class CreateReimbursementDto {

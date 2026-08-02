@@ -119,11 +119,31 @@ export class EmployeesService {
   async findOne(companyId: string, id: string) {
     const employee = await this.prisma.employee.findFirst({
       where: { id, companyId, deletedAt: null },
-      include: {
-        department: true,
-        branch: true,
-        designation: true,
-        team: true,
+      select: {
+        id: true,
+        employeeCode: true,
+        firstName: true,
+        lastName: true,
+        workEmail: true,
+        personalEmail: true,
+        phone: true,
+        gender: true,
+        dateOfBirth: true,
+        dateOfJoining: true,
+        employmentType: true,
+        status: true,
+        branchId: true,
+        departmentId: true,
+        designationId: true,
+        shiftId: true,
+        reportingManagerId: true,
+        dateOfExit: true,
+        createdAt: true,
+        updatedAt: true,
+        department: { select: { id: true, name: true, code: true } },
+        branch: { select: { id: true, name: true, code: true, city: true } },
+        designation: { select: { id: true, title: true, level: true } },
+        team: { select: { id: true, name: true } },
         reportingManager: { select: { id: true, firstName: true, lastName: true } },
         directReports: { select: { id: true, firstName: true, lastName: true } },
         user: { select: { id: true, email: true, status: true, lastLoginAt: true } },
@@ -162,5 +182,69 @@ export class EmployeesService {
       where: { id },
       data: { deletedAt: new Date(), status: 'TERMINATED' },
     });
+  }
+
+  /**
+   * Bulk-import employees from an array of pre-validated DTOs.
+   * Validates each row individually and collects errors so that a
+   * partial success is returned — no transaction rollback on a single
+   * bad row.
+   */
+  async importEmployees(companyId: string, employees: CreateEmployeeDto[]) {
+    const results: { row: number; employeeCode: string; status: string; error?: string }[] = [];
+    let createdCount = 0;
+
+    for (let i = 0; i < employees.length; i++) {
+      const dto = employees[i];
+      try {
+        // Check for duplicate employee code within the import batch or existing DB
+        const existingCode = await this.prisma.employee.findFirst({
+          where: { companyId, employeeCode: dto.employeeCode },
+        });
+        if (existingCode) {
+          results.push({
+            row: i + 1,
+            employeeCode: dto.employeeCode,
+            status: 'SKIPPED',
+            error: 'Employee code already exists',
+          });
+          continue;
+        }
+
+        const { createLoginAccount, roleSlug, ...employeeData } = dto;
+
+        await this.prisma.$transaction(async (tx) => {
+          await tx.employee.create({
+            data: {
+              ...employeeData,
+              dateOfJoining: new Date(dto.dateOfJoining),
+              dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined,
+              companyId,
+            },
+          });
+        });
+
+        createdCount++;
+        results.push({
+          row: i + 1,
+          employeeCode: dto.employeeCode,
+          status: 'CREATED',
+        });
+      } catch (err: any) {
+        results.push({
+          row: i + 1,
+          employeeCode: dto.employeeCode,
+          status: 'FAILED',
+          error: err?.message || 'Unknown error',
+        });
+      }
+    }
+
+    return {
+      total: employees.length,
+      created: createdCount,
+      failed: employees.length - createdCount,
+      results,
+    };
   }
 }

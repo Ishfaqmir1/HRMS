@@ -1,32 +1,34 @@
 'use client';
 
+import { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, unwrap } from '@/lib/api-client';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import dynamic from 'next/dynamic';
 import {
-  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, LineChart, Line, Legend,
-} from 'recharts';
-import { Users, Building2, Briefcase, TrendingUp } from 'lucide-react';
+  Users, Building2, Briefcase, TrendingUp, BarChart3,
+} from 'lucide-react';
+import Link from 'next/link';
+import { getAccessToken } from '@/lib/auth';
+import type { AttendanceTrendPoint, DepartmentAttendanceSummary } from '@/lib/types';
 
-const COLORS = {
-  accent: '#0B6E63',
-  accentLight: '#4DB6A8',
-  danger: '#B42318',
-  amber: '#B45309',
-  inkSoft: '#3C4A5E',
-  inkFaint: '#7C8A9E',
-  teal: '#14A898',
-  purple: '#7C3AED',
-  pink: '#DB2777',
-  blue: '#2563EB',
-};
+// Dynamically import recharts components (heavy library ~60KB gzipped)
+const AnalyticsCharts = dynamic(() => import('@/components/analytics-charts'), {
+  ssr: false,
+  loading: () => <div className="py-12 text-center text-sm text-ink-faint">Loading charts...</div>,
+});
 
-const CHART_COLORS = [COLORS.accent, COLORS.blue, COLORS.purple, COLORS.pink, COLORS.teal, COLORS.amber, COLORS.danger];
-
-function fmt(v: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(v);
-}
+// Attendance charts are also heavy — separate dynamic chunk
+const AttendanceCharts = dynamic(() => import('@/components/attendance-charts'), {
+  ssr: false,
+  loading: () => (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="bento-card p-5"><div className="skeleton h-[260px] w-full" /></div>
+      ))}
+    </div>
+  ),
+});
 
 interface AnalyticsData {
   summary: { totalEmployees: number; activeEmployees: number; departmentsTotal: number; openPositions: number };
@@ -45,21 +47,165 @@ interface AnalyticsData {
   currentYear: number;
 }
 
+function formatDateInput(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
 export default function AnalyticsPage() {
+  const now = new Date();
+  const [trendFrom, setTrendFrom] = useState(() => formatDateInput(new Date(now.getFullYear(), 0, 1)));
+  const [trendTo, setTrendTo] = useState(() => formatDateInput(now));
+  const [granularity, setGranularity] = useState<'day' | 'month'>('month');
+  const [deptFrom, setDeptFrom] = useState(() => formatDateInput(new Date(now.getFullYear(), 0, 1)));
+  const [deptTo, setDeptTo] = useState(() => formatDateInput(now));
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Track whether user has access to attendance reports (requires attendance.approve).
+  // Initialized to null to avoid flash of content before API responds.
+  const [hasAttendanceAccess, setHasAttendanceAccess] = useState<boolean | null>(null);
+
+  // ===== Existing company analytics (catch 403 gracefully) =====
   const { data, isLoading, isError } = useQuery({
     queryKey: ['analytics', 'dashboard'],
-    queryFn: () => unwrap<AnalyticsData>(api.get('/analytics/dashboard')),
+    queryFn: async () => {
+      try {
+        return await unwrap<AnalyticsData>(api.get('/analytics/dashboard'));
+      } catch (err: any) {
+        if (err?.response?.status === 403) {
+          return null; // Signals no access
+        }
+        throw err;
+      }
+    },
+    retry: false,
   });
 
-  const isEmpty = (v: any) => !v || (Array.isArray(v) && v.length === 0);
-  const hasAttendance = data && (data.attendanceToday.present + data.attendanceToday.absent + data.attendanceToday.onLeave + data.attendanceToday.halfDay + data.attendanceToday.late > 0);
-  const hasGenderData = data && (data.genderRatio.male + data.genderRatio.female + data.genderRatio.other + data.genderRatio.undisclosed > 0);
+  // ===== Attendance trend report (catches 403 gracefully) =====
+  const {
+    data: trendData,
+    isLoading: trendLoading,
+    isError: trendError,
+  } = useQuery({
+    queryKey: ['attendance', 'reports', 'trend', trendFrom, trendTo, granularity],
+    queryFn: async () => {
+      try {
+        const result = await unwrap<{ period: any; granularity: string; data: AttendanceTrendPoint[] }>(
+          api.get('/attendance/reports/trend', {
+            params: { from: trendFrom, to: trendTo, granularity },
+          }),
+        );
+        setHasAttendanceAccess(true);
+        return result.data ?? [];
+      } catch (err: any) {
+        if (err?.response?.status === 403) {
+          setHasAttendanceAccess(false);
+          return [];
+        }
+        throw err;
+      }
+    },
+    enabled: !!trendFrom && !!trendTo,
+    retry: false,
+  });
+
+  // ===== Department attendance summary (catches 403 gracefully) =====
+  const {
+    data: deptData,
+    isLoading: deptLoading,
+    isError: deptError,
+  } = useQuery({
+    queryKey: ['attendance', 'reports', 'departments', deptFrom, deptTo],
+    queryFn: async () => {
+      try {
+        const result = await unwrap<{ period: any; departments: DepartmentAttendanceSummary[] }>(
+          api.get('/attendance/reports/departments', {
+            params: { from: deptFrom, to: deptTo },
+          }),
+        );
+        return result.departments ?? [];
+      } catch (err: any) {
+        if (err?.response?.status === 403) {
+          setHasAttendanceAccess(false);
+          return [];
+        }
+        throw err;
+      }
+    },
+    enabled: !!deptFrom && !!deptTo,
+    retry: false,
+  });
+
+  // ===== CSV Export =====
+  const handleExport = useCallback(async () => {
+    setIsExporting(true);
+    try {
+      const accessToken = typeof window !== 'undefined' ? getAccessToken() : null;
+      const params = new URLSearchParams({ from: trendFrom, to: trendTo });
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+      const url = `${baseUrl}/attendance/reports/export/csv?${params}`;
+
+      const res = await fetch(url, {
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      });
+
+      if (!res.ok) throw new Error('Export failed');
+
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `attendance-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch {
+      // silently fail — user can retry
+    } finally {
+      setIsExporting(false);
+    }
+  }, [trendFrom, trendTo]);
+
+  // Quick date range presets
+  const shiftMonth = (dir: -1 | 1) => {
+    const d = new Date(trendFrom);
+    d.setMonth(d.getMonth() + dir);
+    setTrendFrom(formatDateInput(d));
+    const d2 = new Date(trendTo);
+    d2.setMonth(d2.getMonth() + dir);
+    setTrendTo(formatDateInput(d2));
+  };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
-      <h1 className="ledger-tab font-serif text-2xl font-semibold text-ink">Company Analytics</h1>
+    <div className="mx-auto max-w-7xl space-y-8">
+      {/* Page Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="ledger-tab font-serif text-2xl font-semibold text-ink">
+          Company Analytics
+        </h1>
+      </div>
 
-      {isLoading && <p className="text-sm text-ink-faint">Loading analytics…</p>}
+      {/* ================================================================ */}
+      {/* EXISTING ANALYTICS — Summary Cards + Charts                     */}
+      {/* ================================================================ */}
+      {isLoading && (
+        <div className="flex items-center justify-center py-16">
+          <div className="skeleton h-8 w-48 rounded" />
+        </div>
+      )}
+
+      {!isLoading && !data && !isError && (
+        <div className="rounded-xl border border-border bg-white p-8 text-center">
+          <BarChart3 size={32} className="mx-auto mb-3 text-ink-faint/50" />
+          <p className="text-sm text-ink-faint">
+            Analytics require HR/manager access. You can view your personal{' '}
+            <Link href="/ess/attendance/report" className="text-accent hover:underline">Attendance Report</Link>,
+            {' '}<Link href="/ess/payslips" className="text-accent hover:underline">Payslips</Link>,
+            {' '}or <Link href="/ess/leave" className="text-accent hover:underline">Leave</Link>.
+          </p>
+        </div>
+      )}
+
       {isError && (
         <p className="rounded-md bg-danger-soft px-4 py-3 text-sm text-danger">
           Couldn&rsquo;t load analytics data. You may not have the required permissions.
@@ -96,213 +242,54 @@ export default function AnalyticsPage() {
             </Card>
           </div>
 
-          {/* Charts Grid */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            {/* 1. Present vs Absent */}
-            <Card>
-              <CardHeader><CardTitle>Present vs Absent — Today</CardTitle></CardHeader>
-              <CardContent>
-                {!hasAttendance ? (
-                  <p className="py-8 text-center text-sm text-ink-faint">No attendance records for today.</p>
-                ) : (
-                  <ResponsiveContainer width="100%" height={260}>
-                    <PieChart>
-                      <Pie
-                        data={[
-                          { name: 'Present', value: data.attendanceToday.present },
-                          { name: 'Absent', value: data.attendanceToday.absent },
-                          { name: 'On Leave', value: data.attendanceToday.onLeave },
-                          { name: 'Half Day', value: data.attendanceToday.halfDay },
-                          { name: 'Late', value: data.attendanceToday.late },
-                        ].filter(d => d.value > 0)}
-                        cx="50%" cy="50%" outerRadius={90} innerRadius={50}
-                        dataKey="value"
-                        label={({ name, percent }: any) => `${name} ${(percent * 100).toFixed(0)}%`}
-                      >
-                        <Cell fill={COLORS.accent} />
-                        <Cell fill={COLORS.danger} />
-                        <Cell fill={COLORS.blue} />
-                        <Cell fill={COLORS.amber} />
-                        <Cell fill={COLORS.purple} />
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* 5. Gender Ratio */}
-            <Card>
-              <CardHeader><CardTitle>Gender Ratio</CardTitle></CardHeader>
-              <CardContent>
-                {!hasGenderData ? (
-                  <p className="py-8 text-center text-sm text-ink-faint">No data available.</p>
-                ) : (
-                  <ResponsiveContainer width="100%" height={260}>
-                    <PieChart>
-                      <Pie
-                        data={[
-                          { name: 'Male', value: data.genderRatio.male },
-                          { name: 'Female', value: data.genderRatio.female },
-                          { name: 'Other', value: data.genderRatio.other },
-                          { name: 'Undisclosed', value: data.genderRatio.undisclosed },
-                        ].filter(d => d.value > 0)}
-                        cx="50%" cy="50%" outerRadius={90} innerRadius={50}
-                        dataKey="value"
-                        label={({ name, percent }: any) => `${name} ${(percent * 100).toFixed(0)}%`}
-                      >
-                        <Cell fill={COLORS.blue} />
-                        <Cell fill={COLORS.pink} />
-                        <Cell fill={COLORS.purple} />
-                        <Cell fill={COLORS.inkFaint} />
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* 2. Department Strength */}
-            <Card className="lg:col-span-2">
-              <CardHeader><CardTitle>Department Strength</CardTitle></CardHeader>
-              <CardContent>
-                {isEmpty(data.departmentStrength) ? (
-                  <p className="py-8 text-center text-sm text-ink-faint">No departments configured.</p>
-                ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={data.departmentStrength} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={COLORS.inkFaint + '30'} />
-                      <XAxis dataKey="name" tick={{ fontSize: 12, fill: COLORS.inkSoft }} />
-                      <YAxis tick={{ fontSize: 12, fill: COLORS.inkFaint }} allowDecimals={false} />
-                      <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E1E5EA', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} />
-                      <Bar dataKey="count" radius={[6, 6, 0, 0]} name="Employees">
-                        {data.departmentStrength.map((_: any, idx: number) => (
-                          <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* 3. Leave Trend */}
-            <Card className="lg:col-span-2">
-              <CardHeader><CardTitle>Leave Trend — {data.currentYear}</CardTitle></CardHeader>
-              <CardContent>
-                {isEmpty(data.leaveTrend) ? (
-                  <p className="py-8 text-center text-sm text-ink-faint">No leave data for this year.</p>
-                ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={data.leaveTrend} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={COLORS.inkFaint + '30'} />
-                      <XAxis dataKey="label" tick={{ fontSize: 12, fill: COLORS.inkSoft }} />
-                      <YAxis tick={{ fontSize: 12, fill: COLORS.inkFaint }} allowDecimals={false} />
-                      <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E1E5EA', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} />
-                      <Legend />
-                      <Line type="monotone" dataKey="total" stroke={COLORS.inkFaint} strokeWidth={2} name="Total Requests" dot={{ r: 4 }} />
-                      <Line type="monotone" dataKey="approved" stroke={COLORS.accent} strokeWidth={2} name="Approved" dot={{ r: 4 }} />
-                      <Line type="monotone" dataKey="pending" stroke={COLORS.amber} strokeWidth={2} name="Pending" dot={{ r: 4 }} />
-                      <Line type="monotone" dataKey="rejected" stroke={COLORS.danger} strokeWidth={2} name="Rejected" dot={{ r: 4 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* 4. Salary Distribution — by Department */}
-            <Card>
-              <CardHeader><CardTitle>Avg Salary by Department</CardTitle></CardHeader>
-              <CardContent>
-                {isEmpty(data.salaryDistribution.byDepartment) ? (
-                  <p className="py-8 text-center text-sm text-ink-faint">No salary data.</p>
-                ) : (
-                  <>
-                    <p className="mb-4 text-sm text-ink-soft">Company avg: <span className="font-medium text-ink">{fmt(data.salaryDistribution.averageSalary)}</span></p>
-                    <ResponsiveContainer width="100%" height={260}>
-                      <BarChart data={data.salaryDistribution.byDepartment} layout="vertical" margin={{ top: 5, right: 30, left: 60, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={COLORS.inkFaint + '30'} />
-                        <XAxis type="number" tick={{ fontSize: 11, fill: COLORS.inkFaint }} tickFormatter={(v: any) => `$${(Number(v) / 1000).toFixed(0)}k`} />
-                        <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: COLORS.inkSoft }} width={80} />
-                        <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E1E5EA' }} />
-                        <Bar dataKey="averageSalary" radius={[0, 6, 6, 0]} fill={COLORS.accent} name="Avg Salary" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* 4b. Salary Brackets */}
-            <Card>
-              <CardHeader><CardTitle>Salary Brackets</CardTitle></CardHeader>
-              <CardContent>
-                {isEmpty(data.salaryDistribution.brackets) ? (
-                  <p className="py-8 text-center text-sm text-ink-faint">No salary data.</p>
-                ) : (
-                  <ResponsiveContainer width="100%" height={260}>
-                    <BarChart data={data.salaryDistribution.brackets} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={COLORS.inkFaint + '30'} />
-                      <XAxis dataKey="label" tick={{ fontSize: 11, fill: COLORS.inkSoft }} />
-                      <YAxis tick={{ fontSize: 11, fill: COLORS.inkFaint }} allowDecimals={false} />
-                      <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E1E5EA' }} />
-                      <Bar dataKey="count" radius={[6, 6, 0, 0]} fill={COLORS.teal} name="Employees" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* 6. New Joiners */}
-            <Card className="lg:col-span-2">
-              <CardHeader><CardTitle>New Joiners — {data.currentYear}</CardTitle></CardHeader>
-              <CardContent>
-                {data.newJoiners.every(n => n.count === 0) ? (
-                  <p className="py-8 text-center text-sm text-ink-faint">No joiners this year.</p>
-                ) : (
-                  <ResponsiveContainer width="100%" height={260}>
-                    <BarChart data={data.newJoiners} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={COLORS.inkFaint + '30'} />
-                      <XAxis dataKey="label" tick={{ fontSize: 12, fill: COLORS.inkSoft }} />
-                      <YAxis tick={{ fontSize: 12, fill: COLORS.inkFaint }} allowDecimals={false} />
-                      <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E1E5EA' }} />
-                      <Bar dataKey="count" radius={[6, 6, 0, 0]} name="New Joiners">
-                        {data.newJoiners.map((_: any, idx: number) => (
-                          <Cell key={idx} fill={data.newJoiners[idx].count > 0 ? COLORS.accent : COLORS.inkFaint + '40'} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* 7. Attrition */}
-            <Card className="lg:col-span-2">
-              <CardHeader><CardTitle>Attrition — {data.currentYear}</CardTitle></CardHeader>
-              <CardContent>
-                {data.attrition.every(a => a.total === 0) ? (
-                  <p className="py-8 text-center text-sm text-ink-faint">No attrition data for this year.</p>
-                ) : (
-                  <ResponsiveContainer width="100%" height={260}>
-                    <BarChart data={data.attrition} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={COLORS.inkFaint + '30'} />
-                      <XAxis dataKey="label" tick={{ fontSize: 12, fill: COLORS.inkSoft }} />
-                      <YAxis tick={{ fontSize: 12, fill: COLORS.inkFaint }} allowDecimals={false} />
-                      <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E1E5EA' }} />
-                      <Legend />
-                      <Bar dataKey="resigned" stackId="a" fill={COLORS.amber} name="Resigned" radius={[0, 0, 0, 0]} />
-                      <Bar dataKey="terminated" stackId="a" fill={COLORS.danger} name="Terminated" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+          {/* Existing Charts */}
+          <AnalyticsCharts data={data} />
         </>
       )}
+
+      {/* ================================================================ */}
+      {/* NEW — ATTENDANCE ANALYTICS SECTION (only shown if authorized)   */}
+      {/* ================================================================ */}
+      {hasAttendanceAccess === true ? (
+        <div className="relative">
+          <div className="mb-6 flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-soft text-accent">
+              <BarChart3 size={18} />
+            </div>
+            <h2 className="font-serif text-xl font-semibold text-ink">Attendance Analytics</h2>
+          </div>
+
+          <AttendanceCharts
+            trendData={trendData ?? []}
+            trendLoading={trendLoading}
+            trendError={trendError}
+            deptData={deptData ?? []}
+            deptLoading={deptLoading}
+            deptError={deptError}
+            trendFrom={trendFrom}
+            trendTo={trendTo}
+            onTrendFromChange={setTrendFrom}
+            onTrendToChange={setTrendTo}
+            granularity={granularity}
+            onGranularityChange={setGranularity}
+            deptFrom={deptFrom}
+            deptTo={deptTo}
+            onDeptFromChange={setDeptFrom}
+            onDeptToChange={setDeptTo}
+            isExporting={isExporting}
+            onExport={handleExport}
+            shiftMonth={shiftMonth}
+          />
+        </div>
+      ) : hasAttendanceAccess === false ? (
+        <div className="rounded-xl border border-border bg-white p-6 text-center">
+          <BarChart3 size={24} className="mx-auto mb-2 text-ink-faint" />
+          <p className="text-sm text-ink-faint">
+            Attendance analytics require HR/manager access. You can view your personal attendance in the{' '}
+            <Link href="/ess/attendance/report" className="text-accent hover:underline">ESS Attendance Report</Link>.
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }

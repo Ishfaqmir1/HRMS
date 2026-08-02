@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { api, unwrap } from '@/lib/api-client';
 import { LeaveBalance, LeaveRequest, LeaveType, PaginatedResult } from '@/lib/types';
+import { STALE_TIMES } from '@/lib/react-query';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input, Label, FieldError } from '@/components/ui/input';
@@ -29,16 +30,19 @@ export default function LeavePage() {
   const { data: leaveTypes } = useQuery({
     queryKey: ['leave-types'],
     queryFn: () => unwrap<LeaveType[]>(api.get('/leave-types')),
+    staleTime: STALE_TIMES.MASTER_DATA, // 10min — rarely changes
   });
 
   const { data: balances } = useQuery({
     queryKey: ['leave', 'balances'],
     queryFn: () => unwrap<LeaveBalance[]>(api.get('/leave/balances/me')),
+    staleTime: STALE_TIMES.LEAVE,
   });
 
   const { data: requests, isLoading } = useQuery({
     queryKey: ['leave', 'requests'],
     queryFn: () => unwrap<PaginatedResult<LeaveRequest>>(api.get('/leave/requests/me', { params: { limit: 15 } })),
+    staleTime: STALE_TIMES.LEAVE,
   });
 
   const {
@@ -165,6 +169,7 @@ export default function LeavePage() {
             <CardTitle>Approvals</CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="table-responsive">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-xs uppercase tracking-wide text-ink-faint">
@@ -217,6 +222,7 @@ export default function LeavePage() {
                 )}
               </tbody>
             </table>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -228,6 +234,7 @@ export default function LeavePage() {
         <CardContent>
           {isLoading && <p className="text-sm text-ink-faint">Loading requests…</p>}
           {requests && (
+            <div className="table-responsive">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-xs uppercase tracking-wide text-ink-faint">
@@ -267,6 +274,7 @@ export default function LeavePage() {
                 )}
               </tbody>
             </table>
+            </div>
           )}
         </CardContent>
       </Card>
